@@ -20,11 +20,13 @@ The real flow is intentionally simple:
 
 1. User creates or selects an import session.
 2. User uploads many iPhone screenshots, often 20-30+ images.
-3. The app uploads screenshots and automatically runs OCR/extraction.
-4. The Home screen shows the summary immediately: net spend, completed spend, order count, and rows that may need checking.
-5. User exports Excel / CSV / PDF.
+3. The Import workspace immediately shows uploaded files and lets the user delete mistakes before reading.
+4. User taps one clear Read action to run OCR/extraction.
+5. The Import workspace shows OCR text, extracted rows, detected months, app counts, and batch status.
+6. User opens Dashboard for the summary: net spend, completed spend, order count, months, restaurants, apps, and rows that may need checking.
+7. User exports Excel / CSV / PDF.
 
-Important: Review is not a primary step. Do not make Review a main tab or required workflow. Low-confidence, cancelled, refunded, or suspicious rows can be surfaced as "Needs check" or an optional correction surface, but the main app should feel like upload -> summary -> export.
+Important: Review is not a primary step. Do not make Review a main tab or required workflow. Low-confidence, cancelled, refunded, or suspicious rows can be surfaced as "Needs check" or an optional correction surface, but the main app should feel like import workspace -> read -> dashboard -> export.
 
 ## Current Runtime Shape
 
@@ -76,7 +78,7 @@ Never commit `.env`, database files, uploads, exports, or secrets.
 ## Architecture Rules
 
 - Keep OrderLedger independent. Do not import from Muse, copy Muse runtime owners, or add Muse naming.
-- Keep the upload flow automatic. If a user picks screenshots, the next intended action is extraction and summary, not a manual review queue.
+- Keep the import flow staged but simple. Upload should only store screenshots and show the file list; Read should run OCR/extraction; Dashboard should only show extracted summary.
 - Keep API calls centralized in `src/api.ts`.
 - Keep shared client state in `src/state/AppData.tsx`.
 - Keep backend route ownership in `server/index.ts` unless a route area becomes large enough to justify a focused router split.

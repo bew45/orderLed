@@ -46,10 +46,20 @@ export type ScreenshotRow = {
   source_app_guess: string;
   width: number;
   height: number;
+  ocr_text_json: string;
+  ocr_line_count: number;
+  extracted_order_count: number;
   processed_at: number;
   error: string;
   created_at: number;
   updated_at: number;
+};
+
+export type OcrTextRow = {
+  id: string;
+  text: string;
+  confidence: number;
+  bbox: { x: number; y: number; w: number; h: number };
 };
 
 export type AppSettings = {

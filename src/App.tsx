@@ -48,6 +48,7 @@ function Shell() {
         <ImportScreen
           onUpload={() => setUploadOpen(true)}
           onCreateBatch={() => setCreateBatchOpen(true)}
+          onOpenDashboard={() => setTab("home")}
         />
       )}
       {tab === "home" && (

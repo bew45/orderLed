@@ -87,3 +87,18 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
 `);
+
+function columnExists(table: string, column: string) {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return rows.some((row) => row.name === column);
+}
+
+function addColumnIfMissing(table: string, column: string, definition: string) {
+  if (!columnExists(table, column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+addColumnIfMissing("screenshots", "ocr_text_json", "TEXT NOT NULL DEFAULT '[]'");
+addColumnIfMissing("screenshots", "ocr_line_count", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("screenshots", "extracted_order_count", "INTEGER NOT NULL DEFAULT 0");

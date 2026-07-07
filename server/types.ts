@@ -33,6 +33,9 @@ export type Screenshot = {
   source_app_guess: SourceApp;
   width: number;
   height: number;
+  ocr_text_json: string;
+  ocr_line_count: number;
+  extracted_order_count: number;
   processed_at: number;
   error: string;
   created_at: number;

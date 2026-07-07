@@ -85,29 +85,40 @@
 }
 
 html, body, #root {
+  width: 100%;
   height: 100%;
+  height: var(--app-height);
   min-height: var(--app-height);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 html {
   background: var(--surface-sunken);
+  overscroll-behavior: none;
 }
 
 body {
+  position: fixed;
+  inset: 0;
   margin: 0;
-  min-width: 320px;
+  min-width: 0;
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: var(--text-body);
   line-height: var(--leading-normal);
   background: var(--bg-page);
+  overflow: hidden;
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
 }
 
 button, input, select, textarea {
   font: inherit;
   color: inherit;
+  min-width: 0;
 }
 
 button {

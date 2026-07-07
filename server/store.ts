@@ -1,7 +1,7 @@
 import { db, now, uuid } from "./db";
 import { deleteStoredImage } from "./image-store";
 import { json, parseJson } from "./json";
-import type { AppSettings, Batch, BatchSummary, OrderRow, ReviewState, Screenshot, SourceApp } from "./types";
+import type { AppSettings, Batch, BatchSummary, OcrRow, OrderRow, ReviewState, Screenshot, SourceApp } from "./types";
 
 function one<T>(value: unknown) {
   return value as T | undefined;
@@ -53,6 +53,9 @@ export function addScreenshot(input: {
     source_app_guess: input.sourceAppGuess,
     width: input.width,
     height: input.height,
+    ocr_text_json: "[]",
+    ocr_line_count: 0,
+    extracted_order_count: 0,
     processed_at: 0,
     error: "",
     created_at: ts,
@@ -60,8 +63,8 @@ export function addScreenshot(input: {
   };
   db.prepare(`
     INSERT INTO screenshots
-      (id, batch_id, original_name, storage_path, content_hash, source_app_guess, width, height, processed_at, error, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, batch_id, original_name, storage_path, content_hash, source_app_guess, width, height, ocr_text_json, ocr_line_count, extracted_order_count, processed_at, error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     screenshot.id,
     screenshot.batch_id,
@@ -71,6 +74,9 @@ export function addScreenshot(input: {
     screenshot.source_app_guess,
     screenshot.width,
     screenshot.height,
+    screenshot.ocr_text_json,
+    screenshot.ocr_line_count,
+    screenshot.extracted_order_count,
     screenshot.processed_at,
     screenshot.error,
     screenshot.created_at,
@@ -99,18 +105,7 @@ export function deleteScreenshot(id: string) {
 
   try {
     db.exec("BEGIN");
-    const orders = listOrders(shot.batch_id);
-    for (const order of orders) {
-      const ids = parseJson<string[]>(order.source_screenshot_ids_json, []);
-      if (!ids.includes(id)) continue;
-      const nextIds = ids.filter((sourceId) => sourceId !== id);
-      if (nextIds.length === 0) {
-        db.prepare("DELETE FROM orders WHERE id=?").run(order.id);
-      } else {
-        db.prepare("UPDATE orders SET source_screenshot_ids_json=?, updated_at=? WHERE id=?")
-          .run(json(nextIds), ts, order.id);
-      }
-    }
+    removeScreenshotOrderReferences(id, shot.batch_id, ts);
     db.prepare("DELETE FROM screenshots WHERE id=?").run(id);
     db.prepare("UPDATE batches SET updated_at=? WHERE id=?").run(ts, shot.batch_id);
     db.exec("COMMIT");
@@ -123,9 +118,60 @@ export function deleteScreenshot(id: string) {
   return true;
 }
 
-export function markScreenshotProcessed(id: string, error = "") {
+export function clearScreenshotExtraction(id: string) {
+  const shot = getScreenshot(id);
+  if (!shot) return;
   const ts = now();
-  db.prepare("UPDATE screenshots SET processed_at=?, error=?, updated_at=? WHERE id=?").run(error ? 0 : ts, error, ts, id);
+  removeScreenshotOrderReferences(id, shot.batch_id, ts);
+  db.prepare("UPDATE screenshots SET extracted_order_count=0, updated_at=? WHERE id=?").run(ts, id);
+  touchBatch(shot.batch_id);
+}
+
+function removeScreenshotOrderReferences(screenshotId: string, batchId: string, ts: number) {
+  const orders = listOrders(batchId);
+  for (const order of orders) {
+    const ids = parseJson<string[]>(order.source_screenshot_ids_json, []);
+    if (!ids.includes(screenshotId)) continue;
+    const nextIds = ids.filter((sourceId) => sourceId !== screenshotId);
+    if (nextIds.length === 0) {
+      db.prepare("DELETE FROM orders WHERE id=?").run(order.id);
+    } else {
+      db.prepare("UPDATE orders SET source_screenshot_ids_json=?, updated_at=? WHERE id=?")
+        .run(json(nextIds), ts, order.id);
+    }
+  }
+}
+
+export function markScreenshotProcessed(id: string, input: {
+  error?: string;
+  ocrRows?: OcrRow[];
+  sourceAppGuess?: SourceApp;
+  extractedOrderCount?: number;
+} = {}) {
+  const ts = now();
+  const error = input.error ?? "";
+  const current = getScreenshot(id);
+  db.prepare(`
+    UPDATE screenshots SET
+      source_app_guess=?,
+      ocr_text_json=?,
+      ocr_line_count=?,
+      extracted_order_count=?,
+      processed_at=?,
+      error=?,
+      updated_at=?
+    WHERE id=?
+  `).run(
+    input.sourceAppGuess ?? current?.source_app_guess ?? "unknown",
+    json(input.ocrRows ?? parseJson<OcrRow[]>(current?.ocr_text_json, [])),
+    input.ocrRows?.length ?? current?.ocr_line_count ?? 0,
+    input.extractedOrderCount ?? current?.extracted_order_count ?? 0,
+    error ? 0 : ts,
+    error,
+    ts,
+    id
+  );
+  if (current) touchBatch(current.batch_id);
 }
 
 export function upsertOrder(input: {

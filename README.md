@@ -32,8 +32,10 @@ OpenRouter is optional but recommended. Add `OPENROUTER_API_KEY` and `OPENROUTER
 
 - Create import sessions
 - Upload many screenshots
+- Inspect uploaded file list before reading
 - Run OCR + extraction
+- See OCR text and batch summary in the Import workspace
 - Merge duplicate visible order cards
-- Show summary immediately after processing
+- Open Dashboard after processing
 - Optionally check/edit suspicious rows
 - Export Excel, CSV, and PDF

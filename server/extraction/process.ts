@@ -2,7 +2,7 @@ import { extractWithHeuristics } from "./heuristics";
 import { extractWithOpenRouter } from "./openrouter";
 import { guessSourceAppFromText, normalizeExtractedOrder, evidenceFromIds } from "../normalize";
 import { runOcrQueued } from "../ocr/ocr-runner";
-import { getBatch, getBatchSummary, listScreenshots, markScreenshotProcessed, upsertOrder } from "../store";
+import { clearScreenshotExtraction, getBatch, getBatchSummary, listScreenshots, markScreenshotProcessed, upsertOrder } from "../store";
 import type { OcrRow } from "../types";
 
 export async function processBatch(batchId: string, opts: { force?: boolean } = {}) {
@@ -12,6 +12,7 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
   const screenshots = listScreenshots(batchId).filter((shot) => opts.force || !shot.processed_at);
   for (const screenshot of screenshots) {
     try {
+      clearScreenshotExtraction(screenshot.id);
       let rows: OcrRow[] = [];
       let ocrError = "";
       try {
@@ -25,6 +26,7 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
       const llmResult = await extractWithOpenRouter({ screenshot, ocrRows: rows, sourceAppGuess });
       if (!llmResult && ocrError) throw new Error(`${ocrError}. Add OPENROUTER_API_KEY to use vision extraction without OCR.`);
       const result = llmResult ?? extractWithHeuristics(rows, sourceAppGuess);
+      let extractedOrderCount = 0;
 
       for (const order of result.orders) {
         const normalized = normalizeExtractedOrder(order, {
@@ -49,11 +51,17 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
           sourceScreenshotId: screenshot.id,
           evidence
         });
+        extractedOrderCount += 1;
       }
 
-      markScreenshotProcessed(screenshot.id, ocrError && !llmResult ? ocrError : "");
+      markScreenshotProcessed(screenshot.id, {
+        error: ocrError && !llmResult ? ocrError : "",
+        ocrRows: rows,
+        sourceAppGuess,
+        extractedOrderCount
+      });
     } catch (error: any) {
-      markScreenshotProcessed(screenshot.id, error?.message || "Processing failed");
+      markScreenshotProcessed(screenshot.id, { error: error?.message || "Processing failed" });
     }
   }
 

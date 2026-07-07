@@ -2,6 +2,8 @@
 
 Fast map for AI agents and future handoff work.
 
+For the staged import UX/state rationale, read `docs/IMPORT_WORKSPACE_AUDIT.md`.
+
 ## One-Sentence Product
 
 OrderLedger reads monthly food delivery screenshots, extracts order rows, summarizes spending, and exports Excel / CSV / PDF.
@@ -12,14 +14,16 @@ OrderLedger reads monthly food delivery screenshots, extracts order rows, summar
 flowchart TD
   A["Create or select import session"] --> B["Upload many screenshots"]
   B --> C["Store images and skip duplicates"]
-  C --> D["Run OCR and/or OpenRouter vision extraction"]
-  D --> E["Normalize orders and merge duplicates"]
-  E --> F["Show Home summary"]
-  F --> G["Export Excel / CSV / PDF"]
-  F --> H["Optional check/correct suspicious rows"]
+  C --> D["Show uploaded file list in Import workspace"]
+  D --> E["User taps Read screenshots"]
+  E --> F["Run OCR and/or OpenRouter vision extraction"]
+  F --> G["Show OCR lines and batch summary"]
+  G --> H["Open Dashboard summary"]
+  H --> I["Export Excel / CSV / PDF"]
+  H --> J["Optional check/correct suspicious rows"]
 ```
 
-Main point: upload should lead to automatic extraction and summary. Review/check is optional.
+Main point: upload should show the file list first; Read is the explicit extraction action. Review/check is optional.
 
 ## Main Files
 
@@ -35,8 +39,9 @@ Main point: upload should lead to automatic extraction and summary. Review/check
 
 ### Screens
 
-- `src/screens/HomeScreen.tsx` - primary summary surface and upload entry.
-- `src/screens/UploadFlow.tsx` - screenshot picker/upload/extraction progress sheet.
+- `src/screens/HomeScreen.tsx` - primary dashboard summary after extraction.
+- `src/screens/ImportScreen.tsx` - staged import workspace: upload entry, read action, OCR list, batch summary, dashboard handoff.
+- `src/screens/UploadFlow.tsx` - screenshot picker/upload sheet only; it does not run OCR.
 - `src/screens/BatchesScreen.tsx` - import history and active import selection.
 - `src/screens/ExportScreen.tsx` - export actions and export warnings.
 - `src/screens/ReviewScreen.tsx` - optional correction/debug surface. Not canonical navigation.
@@ -96,12 +101,14 @@ Base backend: `http://127.0.0.1:8788`
 2. `AppData` calls `endpoints.uploadScreenshots(activeBatchId, files)`.
 3. `server/index.ts` stores images through `server/image-store.ts`.
 4. Duplicate screenshots are skipped by content hash.
-5. `UploadFlow` should trigger `processActiveBatch(false)` automatically after successful upload.
-6. `server/extraction/process.ts` runs OCR, OpenRouter extraction if configured, or heuristic fallback.
-7. `normalizeExtractedOrder` produces canonical order fields.
-8. `upsertOrder` stores rows and merges duplicates by duplicate key.
-9. `getBatchSummary` returns counts and spend totals.
-10. Home displays the summary and Export creates files.
+5. `ImportScreen` shows uploaded screenshots immediately, including delete actions.
+6. User taps Read; `ImportScreen` calls `processActiveBatch(false)` for unread screenshots or `processActiveBatch(true)` for re-read all.
+7. `server/extraction/process.ts` clears stale rows for each screenshot, runs OCR, OpenRouter extraction if configured, or heuristic fallback.
+8. OCR rows are stored on the screenshot record for debugging and import confidence.
+9. `normalizeExtractedOrder` produces canonical order fields.
+10. `upsertOrder` stores rows and merges duplicates by duplicate key.
+11. `getBatchSummary` returns counts and spend totals.
+12. Import displays OCR/batch status; Dashboard displays the spending summary; Export creates files.
 
 ## Summary Fields
 
@@ -181,6 +188,8 @@ Manual smoke:
 2. open `http://127.0.0.1:5174`
 3. create/select batch
 4. upload screenshots
-5. confirm extraction starts automatically
-6. confirm Home summary updates
-7. export `.xls`, `.csv`, `.pdf`
+5. confirm uploaded files appear immediately in Import
+6. tap Read screenshots
+7. confirm OCR lines and batch summary appear
+8. open Dashboard and confirm summary updates
+9. export `.xls`, `.csv`, `.pdf`
