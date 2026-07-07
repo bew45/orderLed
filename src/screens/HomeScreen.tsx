@@ -166,11 +166,19 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
             <h3>Uploaded screenshots</h3>
             <span>{screenshots.length} image{screenshots.length === 1 ? "" : "s"}</span>
           </div>
-          <div className="uploaded-shot-grid">
+          <div className="uploaded-shot-list">
             {screenshots.slice(0, 12).map((shot) => (
               <a className="uploaded-shot" key={shot.id} href={endpoints.screenshotImageUrl(shot.id)} target="_blank" rel="noreferrer">
-                <img src={endpoints.screenshotImageUrl(shot.id)} alt={shot.original_name} loading="lazy" />
-                <span>{shot.error ? "Failed" : shot.processed_at > 0 ? "Read" : "Uploaded"}</span>
+                <span className="uploaded-shot-thumb">
+                  <img src={endpoints.screenshotImageUrl(shot.id)} alt={shot.original_name} loading="lazy" />
+                </span>
+                <span className="uploaded-shot-info">
+                  <strong>{shot.original_name}</strong>
+                  <small>{shot.width || 0} x {shot.height || 0} / {shot.error ? "Failed" : shot.processed_at > 0 ? "Read" : "Uploaded"}</small>
+                </span>
+                <span className={shot.error ? "uploaded-shot-status is-failed" : "uploaded-shot-status"}>
+                  {shot.error ? "Failed" : shot.processed_at > 0 ? "Read" : "Open"}
+                </span>
               </a>
             ))}
           </div>

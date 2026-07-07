@@ -238,45 +238,76 @@
   padding: 0.85rem;
 }
 
-.uploaded-shot-grid {
+.uploaded-shot-list {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.55rem;
+  gap: 0.5rem;
 }
 
 .uploaded-shot {
-  position: relative;
-  overflow: hidden;
-  display: block;
-  aspect-ratio: 9 / 16;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 68px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-  color: var(--ink-on-brand);
+  background: var(--bg-page);
+  color: var(--ink);
+  padding: 0.45rem 0.55rem 0.45rem 0.45rem;
   text-decoration: none;
 }
 
-.uploaded-shot img {
+.uploaded-shot-thumb {
+  overflow: hidden;
+  width: 54px;
+  height: 60px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-sunken);
+}
+
+.uploaded-shot-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.uploaded-shot span {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 4px;
+.uploaded-shot-info {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.uploaded-shot-info strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.uploaded-shot-info small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+}
+
+.uploaded-shot-status {
+  flex: none;
   border-radius: var(--radius-pill);
-  background: rgba(23, 27, 26, 0.72);
-  padding: 3px 6px;
-  font-size: 10px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  padding: 4px 8px;
+  font-size: var(--text-badge);
   font-weight: var(--weight-bold);
-  text-align: center;
+}
+
+.uploaded-shot-status.is-failed {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .insights-teaser {
@@ -297,10 +328,6 @@
 @media (max-width: 360px) {
   .dashboard-grid-two {
     grid-template-columns: 1fr;
-  }
-
-  .uploaded-shot-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .dashboard-hero-total {
