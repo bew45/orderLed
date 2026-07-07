@@ -2,6 +2,8 @@
 
 Local-first food order ledger for turning delivery app screenshots into clean Excel/CSV/PDF summaries.
 
+For the full product/UX handoff brief, read [`docs/ORDERLEDGER_HANDOFF_REQUIREMENTS.md`](docs/ORDERLEDGER_HANDOFF_REQUIREMENTS.md).
+
 ## Quick Start
 
 ```bash
