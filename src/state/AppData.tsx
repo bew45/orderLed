@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { endpoints, monthNow, type AppSettings, type BatchListItem, type BatchSummary, type OrderRow, type ScreenshotRow, type UploadResult } from "../api";
 
 const AUTO_SYNC_INTERVAL_MS = 5000;
+const ACTIVE_BATCH_STORAGE_KEY = "orderledger.activeBatchId";
 
 type AppDataValue = {
   batches: BatchListItem[];
@@ -29,9 +30,23 @@ type AppDataValue = {
 
 const AppDataContext = createContext<AppDataValue | null>(null);
 
+function readStoredActiveBatchId() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(ACTIVE_BATCH_STORAGE_KEY) || "";
+}
+
+function writeStoredActiveBatchId(id: string) {
+  if (typeof window === "undefined") return;
+  if (id) {
+    window.localStorage.setItem(ACTIVE_BATCH_STORAGE_KEY, id);
+  } else {
+    window.localStorage.removeItem(ACTIVE_BATCH_STORAGE_KEY);
+  }
+}
+
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [batches, setBatches] = useState<BatchListItem[]>([]);
-  const [activeBatchId, setActiveBatchId] = useState("");
+  const [activeBatchId, setActiveBatchId] = useState(readStoredActiveBatchId);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [screenshots, setScreenshots] = useState<ScreenshotRow[]>([]);
   const [summary, setSummary] = useState<BatchSummary | null>(null);
@@ -44,6 +59,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     activeBatchIdRef.current = activeBatchId;
+    writeStoredActiveBatchId(activeBatchId);
   }, [activeBatchId]);
 
   const refreshBatches = useCallback(async () => {
@@ -89,6 +105,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       if (nextActiveId !== currentActiveId) {
         activeBatchIdRef.current = nextActiveId;
+        writeStoredActiveBatchId(nextActiveId);
         setActiveBatchId(nextActiveId);
       }
 
@@ -104,6 +121,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         setOrders([]);
         setScreenshots([]);
         setSummary(null);
+        writeStoredActiveBatchId("");
       }
     } catch (err: any) {
       console.warn("[OrderLedgerSync]", { reason, error: err?.message || err });
@@ -176,7 +194,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     clearError: () => setError(""),
-    selectBatch: (id: string) => setActiveBatchId(id),
+    selectBatch: (id: string) => {
+      activeBatchIdRef.current = id;
+      writeStoredActiveBatchId(id);
+      setActiveBatchId(id);
+    },
 
     refreshBatches: async () => { await syncActiveData("refresh-batches"); },
     refreshOrders: async () => { await syncActiveData("refresh-orders"); },
@@ -189,6 +211,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       await syncActiveData("create-import");
       setActiveBatchId(data.batch.id);
       activeBatchIdRef.current = data.batch.id;
+      writeStoredActiveBatchId(data.batch.id);
       return data.batch;
     },
 
