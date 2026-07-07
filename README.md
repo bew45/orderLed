@@ -2,6 +2,8 @@
 
 Local-first food order ledger for turning delivery app screenshots into clean Excel/CSV/PDF summaries.
 
+For AI agents, read [`AGENTS.md`](AGENTS.md) first, then [`PROJECT_INDEX.md`](PROJECT_INDEX.md).
+
 For the full product/UX handoff brief, read [`docs/ORDERLEDGER_HANDOFF_REQUIREMENTS.md`](docs/ORDERLEDGER_HANDOFF_REQUIREMENTS.md).
 
 ## Quick Start
@@ -32,5 +34,6 @@ OpenRouter is optional but recommended. Add `OPENROUTER_API_KEY` and `OPENROUTER
 - Upload many screenshots
 - Run OCR + extraction
 - Merge duplicate visible order cards
-- Review/edit extracted rows
+- Show summary immediately after processing
+- Optionally check/edit suspicious rows
 - Export Excel, CSV, and PDF
