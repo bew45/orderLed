@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { endpoints, monthNow, type AppSettings, type BatchListItem, type BatchSummary, type OrderRow, type UploadResult } from "../api";
+import { endpoints, monthNow, type AppSettings, type BatchListItem, type BatchSummary, type OrderRow, type ScreenshotRow, type UploadResult } from "../api";
 
 const AUTO_SYNC_INTERVAL_MS = 5000;
 
@@ -8,6 +8,7 @@ type AppDataValue = {
   activeBatchId: string;
   activeBatch: BatchListItem | undefined;
   orders: OrderRow[];
+  screenshots: ScreenshotRow[];
   summary: BatchSummary | null;
   settings: AppSettings | null;
   loading: boolean;
@@ -32,6 +33,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [batches, setBatches] = useState<BatchListItem[]>([]);
   const [activeBatchId, setActiveBatchId] = useState("");
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [screenshots, setScreenshots] = useState<ScreenshotRow[]>([]);
   const [summary, setSummary] = useState<BatchSummary | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,12 +56,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const id = batchId ?? activeBatchId;
     if (!id) {
       setOrders([]);
+      setScreenshots([]);
       setSummary(null);
       return;
     }
-    const data = await endpoints.listOrders(id);
-    setOrders(data.orders);
-    setSummary(data.summary);
+    const [orderData, screenshotData] = await Promise.all([
+      endpoints.listOrders(id),
+      endpoints.listScreenshots(id)
+    ]);
+    setOrders(orderData.orders);
+    setScreenshots(screenshotData.screenshots);
+    setSummary(orderData.summary);
   }, [activeBatchId]);
 
   const refreshSettings = useCallback(async () => {
@@ -86,11 +93,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (nextActiveId) {
-        const orderData = await endpoints.listOrders(nextActiveId);
+        const [orderData, screenshotData] = await Promise.all([
+          endpoints.listOrders(nextActiveId),
+          endpoints.listScreenshots(nextActiveId)
+        ]);
         setOrders(orderData.orders);
+        setScreenshots(screenshotData.screenshots);
         setSummary(orderData.summary);
       } else {
         setOrders([]);
+        setScreenshots([]);
         setSummary(null);
       }
     } catch (err: any) {
@@ -118,6 +130,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!activeBatchId) {
       setOrders([]);
+      setScreenshots([]);
       setSummary(null);
       return;
     }
@@ -157,6 +170,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     activeBatchId,
     activeBatch: batches.find((batch) => batch.id === activeBatchId),
     orders,
+    screenshots,
     summary,
     settings,
     loading,

@@ -19,6 +19,7 @@ import {
   getAppSettings,
   listBatches,
   listOrders,
+  listScreenshots,
   saveAppSettings,
   screenshotHashExists,
   updateOrder
@@ -167,6 +168,15 @@ app.post("/api/batches/:id/screenshots", upload.array("files", 80), async (req, 
     res.json({ added, skipped, summary: getBatchSummary(batch.id) });
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+app.get("/api/batches/:id/screenshots", (req, res) => {
+  try {
+    if (!getBatch(req.params.id)) return void res.status(404).json({ error: "Batch not found" });
+    res.json({ screenshots: listScreenshots(req.params.id), summary: getBatchSummary(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

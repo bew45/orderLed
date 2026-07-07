@@ -38,6 +38,8 @@ export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: ()
                 )}
               </div>
               <div className="batch-meta">
+                <span>{batch.summary.screenshotsTotal} images</span>
+                <span>/</span>
                 <span>{batch.summary.ordersTotal} orders</span>
                 <span>/</span>
                 <span>THB {fmtMoney(batch.summary.netSpend)}</span>

@@ -37,6 +37,21 @@ export type OrderRow = {
   evidence_json: string;
 };
 
+export type ScreenshotRow = {
+  id: string;
+  batch_id: string;
+  original_name: string;
+  storage_path: string;
+  content_hash: string;
+  source_app_guess: string;
+  width: number;
+  height: number;
+  processed_at: number;
+  error: string;
+  created_at: number;
+  updated_at: number;
+};
+
 export type AppSettings = {
   openrouter_api_key: string;
   openrouter_model: string;
@@ -96,6 +111,9 @@ export const endpoints = {
 
   listOrders: (batchId: string) =>
     api<{ orders: OrderRow[]; summary: BatchSummary }>(`/api/batches/${batchId}/orders`),
+
+  listScreenshots: (batchId: string) =>
+    api<{ screenshots: ScreenshotRow[]; summary: BatchSummary }>(`/api/batches/${batchId}/screenshots`),
 
   updateOrder: (id: string, patch: Partial<OrderRow>) =>
     api<{ order: OrderRow }>(`/api/orders/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),

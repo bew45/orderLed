@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { fmtDateTime, fmtMoney, fmtMonthLabel, SOURCE_APP_LABEL, STATUS_LABEL, type OrderRow } from "../api";
+import { endpoints, fmtDateTime, fmtMoney, fmtMonthLabel, SOURCE_APP_LABEL, STATUS_LABEL, type OrderRow } from "../api";
 import { useAppData } from "../state/AppData";
 import { Badge, EmptyState, IconInbox, PrimaryButton, StatCard } from "../components/ui";
 
@@ -64,7 +64,7 @@ function aggregate(orders: OrderRow[], pick: (order: OrderRow) => { key: string;
 }
 
 export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => void }) {
-  const { activeBatch, summary, orders } = useAppData();
+  const { activeBatch, summary, orders, screenshots } = useAppData();
   const [selectedMonth, setSelectedMonth] = useState("all");
 
   const dashboard = useMemo(() => {
@@ -159,6 +159,23 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
       <div className="home-cta-stack">
         <PrimaryButton block onClick={props.onUpload}>Upload screenshots</PrimaryButton>
       </div>
+
+      {screenshots.length > 0 && (
+        <section className="dashboard-section">
+          <div className="dashboard-section-head">
+            <h3>Uploaded screenshots</h3>
+            <span>{screenshots.length} image{screenshots.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="uploaded-shot-grid">
+            {screenshots.slice(0, 12).map((shot) => (
+              <a className="uploaded-shot" key={shot.id} href={endpoints.screenshotImageUrl(shot.id)} target="_blank" rel="noreferrer">
+                <img src={endpoints.screenshotImageUrl(shot.id)} alt={shot.original_name} loading="lazy" />
+                <span>{shot.error ? "Failed" : shot.processed_at > 0 ? "Read" : "Uploaded"}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       {!hasOrders ? (
         <EmptyState
