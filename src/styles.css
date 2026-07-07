@@ -310,6 +310,14 @@
   color: var(--danger);
 }
 
+.batch-image-loading {
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--ink-faint);
+  padding: 0.65rem 0.75rem;
+  font-size: var(--text-sm);
+}
+
 .insights-teaser {
   display: grid;
   gap: 0.3rem;

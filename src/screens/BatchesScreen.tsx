@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import { fmtMoney } from "../api";
+import { endpoints, fmtMoney } from "../api";
 import { useAppData } from "../state/AppData";
 import { EmptyState, IconHistory, IconPlus, IconTrash, PrimaryButton } from "../components/ui";
 
-export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: () => void }) {
-  const { batches, activeBatchId, selectBatch, deleteBatch } = useAppData();
+export function BatchesScreen(props: { onCreateBatch: () => void }) {
+  const { batches, activeBatchId, screenshots, selectBatch, deleteBatch } = useAppData();
   const [confirmId, setConfirmId] = useState("");
 
   async function handleDelete(id: string) {
@@ -48,7 +48,7 @@ export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: ()
                 <PrimaryButton
                   className="btn-sm"
                   variant={batch.id === activeBatchId ? "primary" : "ghost"}
-                  onClick={() => { selectBatch(batch.id); props.onSelected(); }}
+                  onClick={() => selectBatch(batch.id)}
                 >
                   {batch.id === activeBatchId ? "Active" : "Make active"}
                 </PrimaryButton>
@@ -56,10 +56,44 @@ export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: ()
                   <IconTrash size={14} /> {confirmId === batch.id ? "Confirm" : "Delete"}
                 </PrimaryButton>
               </div>
+              {batch.id === activeBatchId && batch.summary.screenshotsTotal > 0 && (
+                <BatchScreenshotList
+                  expectedCount={batch.summary.screenshotsTotal}
+                  screenshots={screenshots.filter((shot) => shot.batch_id === batch.id)}
+                />
+              )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function BatchScreenshotList(props: {
+  expectedCount: number;
+  screenshots: Array<{ id: string; original_name: string; width: number; height: number; processed_at: number; error: string }>;
+}) {
+  if (props.screenshots.length === 0) {
+    return <div className="batch-image-loading">Loading {props.expectedCount} uploaded image{props.expectedCount === 1 ? "" : "s"}...</div>;
+  }
+
+  return (
+    <div className="uploaded-shot-list">
+      {props.screenshots.slice(0, 12).map((shot) => (
+        <a className="uploaded-shot" key={shot.id} href={endpoints.screenshotImageUrl(shot.id)} target="_blank" rel="noreferrer">
+          <span className="uploaded-shot-thumb">
+            <img src={endpoints.screenshotImageUrl(shot.id)} alt={shot.original_name} loading="lazy" />
+          </span>
+          <span className="uploaded-shot-info">
+            <strong>{shot.original_name}</strong>
+            <small>{shot.width || 0} x {shot.height || 0} / {shot.error ? "Failed" : shot.processed_at > 0 ? "Read" : "Uploaded"}</small>
+          </span>
+          <span className={shot.error ? "uploaded-shot-status is-failed" : "uploaded-shot-status"}>
+            {shot.error ? "Failed" : shot.processed_at > 0 ? "Read" : "Open"}
+          </span>
+        </a>
+      ))}
     </div>
   );
 }

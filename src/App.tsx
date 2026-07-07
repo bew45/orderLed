@@ -50,7 +50,7 @@ function Shell() {
         />
       )}
       {tab === "batches" && (
-        <BatchesScreen onCreateBatch={() => setCreateBatchOpen(true)} onSelected={() => setTab("home")} />
+        <BatchesScreen onCreateBatch={() => setCreateBatchOpen(true)} />
       )}
       {tab === "export" && <ExportScreen />}
 
