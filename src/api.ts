@@ -109,7 +109,8 @@ export const endpoints = {
 
   screenshotImageUrl: (id: string) => `/api/screenshots/${id}/image`,
 
-  exportUrl: (batchId: string, kind: "xls" | "csv" | "pdf") => `/api/batches/${batchId}/export.${kind}`
+  exportUrl: (batchId: string, kind: "xls" | "csv" | "pdf", month?: string) =>
+    `/api/batches/${batchId}/export.${kind}${month ? `?month=${encodeURIComponent(month)}` : ""}`
 };
 
 export function firstScreenshotId(order: OrderRow): string | null {
@@ -143,6 +144,13 @@ export const SOURCE_APP_LABEL: Record<string, string> = {
   lineman: "LINE MAN",
   shopeefood: "ShopeeFood",
   unknown: "Unknown"
+};
+
+export const SOURCE_APP_COLOR: Record<string, string> = {
+  grab: "#0a8a3f",
+  lineman: "#3a3530",
+  shopeefood: "#ee4d2d",
+  unknown: "#5b665f"
 };
 
 export const STATUS_LABEL: Record<string, string> = {

@@ -18,7 +18,7 @@ Primary platforms:
 
 The real flow is intentionally simple:
 
-1. User creates or selects a monthly batch.
+1. User creates or selects an import session.
 2. User uploads many iPhone screenshots, often 20-30+ images.
 3. The app uploads screenshots and automatically runs OCR/extraction.
 4. The Home screen shows the summary immediately: net spend, completed spend, order count, and rows that may need checking.

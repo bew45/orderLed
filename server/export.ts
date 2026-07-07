@@ -13,6 +13,24 @@ function baseName(title: string, month: string) {
   return `${title || "orderledger"}-${month}`.normalize("NFKC").replace(/[<>:"/\\|?*\x00-\x1f]+/g, "_").replace(/\s+/g, "_");
 }
 
+function filterOrders(orders: OrderRow[], month?: string) {
+  if (!month) return orders;
+  if (month === "unknown") return orders.filter((order) => !/^\d{4}-\d{2}/.test(order.ordered_at || ""));
+  return orders.filter((order) => order.ordered_at.slice(0, 7) === month);
+}
+
+function summarizeOrders(orders: OrderRow[]) {
+  const completedSpend = orders.filter((o) => o.status === "completed").reduce((sum, o) => sum + o.total_amount, 0);
+  const netSpend = orders.reduce((sum, o) => sum + o.net_amount, 0);
+  return {
+    netSpend: Math.round(netSpend * 100) / 100,
+    completedSpend: Math.round(completedSpend * 100) / 100,
+    refundedOrCancelled: Math.round((completedSpend - netSpend) * 100) / 100,
+    ordersTotal: orders.length,
+    ordersNeedingReview: orders.filter((o) => o.review_state === "needs_review").length
+  };
+}
+
 function orderRows(orders: OrderRow[]) {
   return orders.map((order) => ({
     Date: order.ordered_at.slice(0, 10),
@@ -48,10 +66,10 @@ function htmlTable(title: string, rows: Record<string, unknown>[]) {
   ].join("\n");
 }
 
-export function buildExcelExport(batchId: string) {
+export function buildExcelExport(batchId: string, opts: { month?: string } = {}) {
   const batch = batchOrThrow(batchId);
-  const orders = listOrders(batchId);
-  const summary = getBatchSummary(batchId);
+  const orders = filterOrders(listOrders(batchId), opts.month);
+  const summary = opts.month ? summarizeOrders(orders) : getBatchSummary(batchId);
   const summaryRows = [
     { Metric: "Net spend", Value: summary.netSpend },
     { Metric: "Completed spend", Value: summary.completedSpend },
@@ -91,7 +109,7 @@ export function buildExcelExport(batchId: string) {
   </style>
 </head>
 <body>
-  <h1>${escapeHtml(batch.title)} (${escapeHtml(batch.month)})</h1>
+  <h1>${escapeHtml(batch.title)}${opts.month ? ` (${escapeHtml(opts.month)})` : ""}</h1>
   ${htmlTable("Orders", orderRows(orders))}
   ${htmlTable("Summary", summaryRows)}
   ${htmlTable("By App", [...byApp.values()])}
@@ -102,13 +120,13 @@ export function buildExcelExport(batchId: string) {
   return {
     buffer: Buffer.from(html, "utf8"),
     contentType: "application/vnd.ms-excel; charset=utf-8",
-    filename: `${baseName(batch.title, batch.month)}.xls`
+    filename: `${baseName(batch.title, opts.month ?? batch.month)}.xls`
   };
 }
 
-export function buildCsvExport(batchId: string) {
+export function buildCsvExport(batchId: string, opts: { month?: string } = {}) {
   const batch = batchOrThrow(batchId);
-  const rows = orderRows(listOrders(batchId));
+  const rows = orderRows(filterOrders(listOrders(batchId), opts.month));
   const columns = rows.length ? Object.keys(rows[0]) : [];
   const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const csv = [
@@ -121,7 +139,7 @@ export function buildCsvExport(batchId: string) {
   return {
     buffer: Buffer.from(csv, "utf8"),
     contentType: "text/csv; charset=utf-8",
-    filename: `${baseName(batch.title, batch.month)}.csv`
+    filename: `${baseName(batch.title, opts.month ?? batch.month)}.csv`
   };
 }
 
@@ -134,10 +152,10 @@ function resolveThaiFont() {
   return candidates.find((candidate) => existsSync(candidate));
 }
 
-export async function buildPdfExport(batchId: string) {
+export async function buildPdfExport(batchId: string, opts: { month?: string } = {}) {
   const batch = batchOrThrow(batchId);
-  const orders = listOrders(batchId);
-  const summary = getBatchSummary(batchId);
+  const orders = filterOrders(listOrders(batchId), opts.month);
+  const summary = opts.month ? summarizeOrders(orders) : getBatchSummary(batchId);
   const fontPath = resolveThaiFont();
 
   const buffer = await new Promise<Buffer>((resolve, reject) => {
@@ -149,7 +167,7 @@ export async function buildPdfExport(batchId: string) {
     if (fontPath) doc.font(fontPath);
 
     doc.fontSize(20).text("OrderLedger", { continued: false });
-    doc.fontSize(12).fillColor("#555").text(`${batch.title} · ${batch.month}`);
+    doc.fontSize(12).fillColor("#555").text(`${batch.title}${opts.month ? ` - ${opts.month}` : ""}`);
     doc.moveDown();
     doc.fillColor("#111").fontSize(12).text(`Net spend: ${summary.netSpend.toFixed(2)} THB`);
     doc.text(`Completed spend: ${summary.completedSpend.toFixed(2)} THB`);
@@ -167,6 +185,6 @@ export async function buildPdfExport(batchId: string) {
   return {
     buffer,
     contentType: "application/pdf",
-    filename: `${baseName(batch.title, batch.month)}.pdf`
+    filename: `${baseName(batch.title, opts.month ?? batch.month)}.pdf`
   };
 }

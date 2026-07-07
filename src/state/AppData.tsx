@@ -98,7 +98,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     createBatch: async (input) => {
       const data = await endpoints.createBatch({
-        title: input.title || `Food orders ${monthNow()}`,
+        title: input.title || `Food order import ${monthNow()}`,
         month: input.month || monthNow()
       });
       await refreshBatches();
@@ -113,7 +113,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
 
     uploadFiles: async (files) => {
-      if (!activeBatchId) throw new Error("No active batch selected");
+      if (!activeBatchId) throw new Error("No active import selected");
       const result = await endpoints.uploadScreenshots(activeBatchId, files);
       await refreshBatches();
       await refreshOrders(activeBatchId);
@@ -121,7 +121,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
 
     processActiveBatch: async (force = false) => {
-      if (!activeBatchId) throw new Error("No active batch selected");
+      if (!activeBatchId) throw new Error("No active import selected");
       const data = await endpoints.processBatch(activeBatchId, force);
       await refreshBatches();
       await refreshOrders(activeBatchId);

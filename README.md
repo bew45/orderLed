@@ -30,7 +30,7 @@ OpenRouter is optional but recommended. Add `OPENROUTER_API_KEY` and `OPENROUTER
 
 ## Current V1 Scope
 
-- Create monthly batches
+- Create import sessions
 - Upload many screenshots
 - Run OCR + extraction
 - Merge duplicate visible order cards

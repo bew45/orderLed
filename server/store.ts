@@ -10,7 +10,7 @@ function one<T>(value: unknown) {
 export function createBatch(input: { title?: string; month?: string }) {
   const ts = now();
   const month = String(input.month || new Date().toISOString().slice(0, 7));
-  const title = String(input.title || `Orders ${month}`).trim();
+  const title = String(input.title || `Food order import ${month}`).trim();
   const batch: Batch = { id: uuid("batch"), title, month, created_at: ts, updated_at: ts };
   db.prepare("INSERT INTO batches (id, title, month, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
     .run(batch.id, batch.title, batch.month, batch.created_at, batch.updated_at);

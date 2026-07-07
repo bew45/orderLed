@@ -220,7 +220,7 @@ app.delete("/api/orders/:id", (req, res) => {
 
 app.get("/api/batches/:id/export.xls", (req, res) => {
   try {
-    sendFileBuffer(res, buildExcelExport(req.params.id));
+    sendFileBuffer(res, buildExcelExport(req.params.id, { month: typeof req.query.month === "string" ? req.query.month : undefined }));
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
   }
@@ -228,7 +228,7 @@ app.get("/api/batches/:id/export.xls", (req, res) => {
 
 app.get("/api/batches/:id/export.csv", (req, res) => {
   try {
-    sendFileBuffer(res, buildCsvExport(req.params.id));
+    sendFileBuffer(res, buildCsvExport(req.params.id, { month: typeof req.query.month === "string" ? req.query.month : undefined }));
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
   }
@@ -236,7 +236,7 @@ app.get("/api/batches/:id/export.csv", (req, res) => {
 
 app.get("/api/batches/:id/export.pdf", async (req, res) => {
   try {
-    sendFileBuffer(res, await buildPdfExport(req.params.id));
+    sendFileBuffer(res, await buildPdfExport(req.params.id, { month: typeof req.query.month === "string" ? req.query.month : undefined }));
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
   }

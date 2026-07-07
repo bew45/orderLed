@@ -10,7 +10,8 @@
     "build": "tsc -b && vite build",
     "start": "node dist-server/index.js",
     "ocr:install": "powershell -ExecutionPolicy Bypass -File scripts/setup-ocr.ps1",
-    "ocr:smoke": "python scripts/paddle_ocr_worker.py --help"
+    "ocr:smoke": "python scripts/paddle_ocr_worker.py --help",
+    "legacy:import": "tsx scripts/import-legacy-amounts.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

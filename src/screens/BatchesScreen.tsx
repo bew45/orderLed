@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { fmtMoney, fmtMonthLabel } from "../api";
+import { fmtMoney } from "../api";
 import { useAppData } from "../state/AppData";
-import { EmptyState, IconPlus, IconTrash, PrimaryButton } from "../components/ui";
+import { EmptyState, IconHistory, IconPlus, IconTrash, PrimaryButton } from "../components/ui";
 
 export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: () => void }) {
   const { batches, activeBatchId, selectBatch, deleteBatch } = useAppData();
@@ -21,12 +21,12 @@ export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: ()
       <div className="review-filter-row">
         <h2 className="screen-title">History</h2>
         <PrimaryButton className="btn-sm" onClick={props.onCreateBatch}>
-          <IconPlus size={16} /> New batch
+          <IconPlus size={16} /> New import
         </PrimaryButton>
       </div>
 
       {batches.length === 0 ? (
-        <EmptyState title="No batches yet" body="Create your first monthly batch to start importing screenshots." />
+        <EmptyState icon={<IconHistory size={24} />} title="No imports yet" body="Create your first import to start reading screenshots." />
       ) : (
         <div className="stack">
           {batches.map((batch) => (
@@ -34,15 +34,13 @@ export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: ()
               <div className="batch-title-row">
                 <strong>{batch.title}</strong>
                 {batch.summary.ordersNeedingReview > 0 && (
-                  <span className="pill pill-needs_review">{batch.summary.ordersNeedingReview} review</span>
+                  <span className="badge badge--needs_review">{batch.summary.ordersNeedingReview} check</span>
                 )}
               </div>
               <div className="batch-meta">
-                <span>{fmtMonthLabel(batch.month)}</span>
-                <span>·</span>
                 <span>{batch.summary.ordersTotal} orders</span>
-                <span>·</span>
-                <span>฿{fmtMoney(batch.summary.netSpend)}</span>
+                <span>/</span>
+                <span>THB {fmtMoney(batch.summary.netSpend)}</span>
               </div>
               <div className="chip-row">
                 <PrimaryButton

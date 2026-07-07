@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { endpoints, firstScreenshotId, fmtMoney, SOURCE_APP_LABEL, STATUS_LABEL, type OrderRow } from "../api";
 import { useAppData } from "../state/AppData";
-import { BottomSheet, IconTrash, PrimaryButton, StatusPill } from "./ui";
+import { Alert, Badge, BottomSheet, IconTrash, PrimaryButton } from "./ui";
 
 const STATUS_OPTIONS = ["completed", "cancelled", "refunded", "unknown"];
 
@@ -80,10 +80,10 @@ export function OrderSheet(props: { orderId: string; onClose: () => void }) {
       }
     >
       <div className="stack">
-        {error && <div className="banner banner-danger">{error}</div>}
+        {error && <Alert variant="error" message={error} />}
 
         <div className="card-title-row">
-          <StatusPill state={merged.review_state} />
+          <Badge status={merged.review_state} />
           <span className="screen-subtitle">confidence {Math.round((merged.confidence || 0) * 100)}%</span>
         </div>
 

@@ -88,39 +88,96 @@ export const IconEyeOff = svg(
   <path d="M3.5 3.5l17 17M9.9 9.9a2.6 2.6 0 0 0 3.6 3.6M6.6 6.7C4.3 8.2 2.5 12 2.5 12s3.5 6.5 9.5 6.5c1.7 0 3.1-.5 4.3-1.2M10.6 5.6A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a15 15 0 0 1-2.9 3.9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
 );
 
+export const IconInbox = svg(
+  <>
+    <path d="M4 12h4l1.5 3h5L16 12h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M5 12 4 6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1l-1 6M4 12v6a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </>
+);
+
+export const IconCheckCircle = svg(
+  <>
+    <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
+    <path d="M8.5 12.3l2.4 2.4 4.6-5.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </>
+);
+
+export const IconAlertTriangle = svg(
+  <>
+    <path d="M12 4.5 21 19H3L12 4.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="M12 10v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    <circle cx="12" cy="16.6" r="0.9" fill="currentColor" />
+  </>
+);
+
 /* ---------- Primitives ---------- */
 
 export function PrimaryButton(
   props: React.ButtonHTMLAttributes<HTMLButtonElement> & { block?: boolean; variant?: "primary" | "ghost" | "danger" }
 ) {
   const { block, variant = "primary", className, ...rest } = props;
-  const mapped = variant === "ghost" ? "secondary" : variant === "danger" ? "ghost" : "primary";
-  const cls = ["ol-btn", `ol-btn--${mapped}`, block ? "ol-btn--block" : "", variant === "danger" ? "ol-btn--danger" : "", className].filter(Boolean).join(" ");
+  const cls = ["btn", `btn-${variant}`, block ? "btn-block" : "", className].filter(Boolean).join(" ");
   return <button className={cls} {...rest} />;
 }
 
-export function StatCard(props: { label: string; value: string; tone?: "warn" | "positive" }) {
+export function StatCard(props: { label: string; value: string; tone?: "warn" }) {
   return (
-    <div className={["stat-card", props.tone].filter(Boolean).join(" ")}>
+    <div className={["stat-card", props.tone === "warn" ? "warn" : ""].filter(Boolean).join(" ")}>
       <span className="stat-label">{props.label}</span>
-      <strong className="stat-value">{props.value}</strong>
+      <strong className="stat-value tabular">{props.value}</strong>
     </div>
   );
 }
 
-export function StatusPill(props: { state: string }) {
-  const state = props.state === "ok" ? "completed" : props.state;
+export function Badge(props: { status: string; label?: string }) {
+  const labels: Record<string, string> = {
+    completed: "Completed",
+    cancelled: "Cancelled",
+    refunded: "Refunded",
+    unknown: "Unknown",
+    needs_review: "Needs review",
+    corrected: "Corrected",
+    ok: "OK"
+  };
   return (
-    <span className={`ol-badge ol-badge--${state}`}>
-      <span className="ol-badge__dot" />
-      {props.state.replace("_", " ")}
+    <span className={`badge badge--${props.status}`}>
+      <span className="badge-dot" />
+      {props.label ?? labels[props.status] ?? props.status}
     </span>
   );
 }
 
-export function EmptyState(props: { title: string; body: string; children?: React.ReactNode }) {
+export type AlertVariant = "success" | "warning" | "error" | "info";
+
+const ALERT_ICON: Record<AlertVariant, (p: IconProps) => React.ReactElement> = {
+  success: IconCheckCircle,
+  warning: IconAlertTriangle,
+  error: IconAlertTriangle,
+  info: IconInbox
+};
+
+export function Alert(props: { variant: AlertVariant; title?: string; message: string; onDismiss?: () => void }) {
+  const Icon = ALERT_ICON[props.variant];
+  return (
+    <div className={`alert alert--${props.variant}`} role={props.variant === "error" ? "alert" : "status"}>
+      <span className="alert-icon"><Icon size={17} /></span>
+      <span className="alert-body">
+        {props.title && <div className="alert-title">{props.title}</div>}
+        <div className="alert-message">{props.message}</div>
+      </span>
+      {props.onDismiss && (
+        <button type="button" className="icon-btn-sm" aria-label="Dismiss" onClick={props.onDismiss}>
+          <IconClose size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function EmptyState(props: { icon?: React.ReactNode; title: string; body: string; children?: React.ReactNode }) {
   return (
     <div className="empty-state">
+      {props.icon && <div className="empty-icon">{props.icon}</div>}
       <h3>{props.title}</h3>
       <p>{props.body}</p>
       {props.children}
@@ -128,27 +185,63 @@ export function EmptyState(props: { title: string; body: string; children?: Reac
   );
 }
 
-export type ProgressStepState = "pending" | "active" | "done" | "error";
+export type ProcessingState = "queued" | "processing" | "done" | "failed";
 
-export function ProgressSteps(props: { steps: Array<{ label: string; state: ProgressStepState }> }) {
+export function ProcessingProgressCard(props: {
+  queued: number;
+  processed: number;
+  failed: number;
+  ordersFound: number;
+  total: number;
+  state: ProcessingState;
+}) {
+  const pct = props.total > 0 ? Math.min(100, Math.round((props.processed / props.total) * 100)) : 0;
+  const stateLabel: Record<ProcessingState, string> = {
+    queued: "Queued",
+    processing: "Processing",
+    done: "Done",
+    failed: "Attention needed"
+  };
+  const failed = props.state === "failed";
   return (
-    <div className="progress-steps">
-      {props.steps.map((step) => (
-        <div key={step.label} className={`progress-step ${step.state}`}>
-          <span className="step-dot">{step.state === "done" ? <IconCheck size={12} /> : step.state === "error" ? "!" : ""}</span>
-          <span>{step.label}</span>
+    <div className="card">
+      <div className="progress-card-head">
+        <span className="progress-card-title">Reading screenshots</span>
+        <span className={failed ? "progress-card-state is-failed" : "progress-card-state"}>
+          {props.state === "processing" && <span className="progress-state-dot" />}
+          {stateLabel[props.state]}
+        </span>
+      </div>
+      <div className="progress-track">
+        <div className={failed ? "progress-track-fill is-failed" : "progress-track-fill"} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="progress-stats">
+        <div className="progress-stat">
+          <div className="progress-stat-value tabular">{props.queued}</div>
+          <div className="progress-stat-label">Queued</div>
         </div>
-      ))}
+        <div className="progress-stat">
+          <div className="progress-stat-value tabular">{props.processed}</div>
+          <div className="progress-stat-label">Processed</div>
+        </div>
+        <div className="progress-stat progress-stat--failed">
+          <div className="progress-stat-value tabular">{props.failed}</div>
+          <div className="progress-stat-label">Failed</div>
+        </div>
+        <div className="progress-stat progress-stat--found">
+          <div className="progress-stat-value tabular">{props.ordersFound}</div>
+          <div className="progress-stat-label">Found</div>
+        </div>
+      </div>
     </div>
   );
 }
 
-export type TabKey = "home" | "review" | "batches" | "export";
+export type TabKey = "home" | "batches" | "export";
 
-export function TabBar(props: { active: TabKey; reviewBadge?: number; onSelect: (tab: TabKey) => void }) {
+export function TabBar(props: { active: TabKey; attentionCount?: number; onSelect: (tab: TabKey) => void }) {
   const items: Array<{ key: TabKey; label: string; icon: (p: IconProps) => React.ReactElement }> = [
     { key: "home", label: "Home", icon: IconHome },
-    { key: "review", label: "Review", icon: IconReview },
     { key: "batches", label: "History", icon: IconHistory },
     { key: "export", label: "Export", icon: IconExport }
   ];
@@ -163,7 +256,7 @@ export function TabBar(props: { active: TabKey; reviewBadge?: number; onSelect: 
           >
             <item.icon size={20} />
             <span>{item.label}</span>
-            {item.key === "review" && !!props.reviewBadge && <span className="tab-badge">{props.reviewBadge}</span>}
+            {item.key === "home" && !!props.attentionCount && <span className="tab-badge">{props.attentionCount}</span>}
           </button>
         ))}
       </nav>
@@ -179,20 +272,23 @@ export function BottomSheet(props: {
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="ol-sheet-overlay" onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
-      <div className="ol-sheet" role="dialog" aria-modal="true" aria-label={props.title}>
-        <div className="ol-sheet__grabber" />
-          <div className="ol-sheet__head">
+    <div className="sheet-overlay">
+      <button className="sheet-scrim" onClick={props.onClose} aria-label="Close" />
+      <div className="sheet-dock">
+        <section className="sheet-card">
+          <div className="sheet-handle" />
+          <div className="sheet-head">
             <div>
-              <span className="ol-sheet__title">{props.title}</span>
+              <h2>{props.title}</h2>
               {props.subtitle && <p>{props.subtitle}</p>}
             </div>
-            <button className="ol-sheet__close" onClick={props.onClose} aria-label="Close">
+            <button className="icon-btn" onClick={props.onClose} aria-label="Close">
               <IconClose size={18} />
             </button>
           </div>
-          <div className="ol-sheet__body">{props.children}</div>
-          {props.footer && <div className="ol-sheet__footer">{props.footer}</div>}
+          <div className="sheet-body">{props.children}</div>
+          {props.footer && <div className="sheet-footer">{props.footer}</div>}
+        </section>
       </div>
     </div>
   );

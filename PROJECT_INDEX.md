@@ -10,7 +10,7 @@ OrderLedger reads monthly food delivery screenshots, extracts order rows, summar
 
 ```mermaid
 flowchart TD
-  A["Create or select monthly batch"] --> B["Upload many screenshots"]
+  A["Create or select import session"] --> B["Upload many screenshots"]
   B --> C["Store images and skip duplicates"]
   C --> D["Run OCR and/or OpenRouter vision extraction"]
   D --> E["Normalize orders and merge duplicates"]
@@ -37,7 +37,7 @@ Main point: upload should lead to automatic extraction and summary. Review/check
 
 - `src/screens/HomeScreen.tsx` - primary summary surface and upload entry.
 - `src/screens/UploadFlow.tsx` - screenshot picker/upload/extraction progress sheet.
-- `src/screens/BatchesScreen.tsx` - monthly batch history and active batch selection.
+- `src/screens/BatchesScreen.tsx` - import history and active import selection.
 - `src/screens/ExportScreen.tsx` - export actions and export warnings.
 - `src/screens/ReviewScreen.tsx` - optional correction/debug surface. Not canonical navigation.
 
@@ -45,7 +45,7 @@ Main point: upload should lead to automatic extraction and summary. Review/check
 
 - `src/components/ui.tsx` - local icons and shared primitives: buttons, badges, alerts, tab bar, bottom sheet.
 - `src/components/SettingsSheet.tsx` - OpenRouter/OCR settings and model picker.
-- `src/components/CreateBatchSheet.tsx` - monthly batch creation.
+- `src/components/CreateBatchSheet.tsx` - import creation.
 - `src/components/OrderSheet.tsx` - optional order correction sheet.
 
 ### Backend
