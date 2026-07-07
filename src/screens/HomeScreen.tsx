@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { endpoints, fmtDateTime, fmtMoney, fmtMonthLabel, SOURCE_APP_LABEL, STATUS_LABEL, type OrderRow } from "../api";
+import { fmtDateTime, fmtMoney, fmtMonthLabel, SOURCE_APP_LABEL, STATUS_LABEL, type OrderRow } from "../api";
 import { useAppData } from "../state/AppData";
 import { Badge, EmptyState, IconInbox, PrimaryButton, StatCard } from "../components/ui";
 
@@ -63,8 +63,8 @@ function aggregate(orders: OrderRow[], pick: (order: OrderRow) => { key: string;
   return [...map.values()].sort((a, b) => b.amount - a.amount || b.count - a.count);
 }
 
-export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => void }) {
-  const { activeBatch, summary, orders, screenshots } = useAppData();
+export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () => void }) {
+  const { activeBatch, summary, orders } = useAppData();
   const [selectedMonth, setSelectedMonth] = useState("all");
 
   const dashboard = useMemo(() => {
@@ -128,7 +128,7 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
   return (
     <div className="screen">
       <div>
-        <p className="eyebrow">Import Summary</p>
+        <p className="eyebrow">Dashboard</p>
         <h2 className="screen-title">{activeBatch.title}</h2>
       </div>
 
@@ -156,41 +156,14 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
           : "No screenshots uploaded yet for this import."}
       </div>
 
-      <div className="home-cta-stack">
-        <PrimaryButton block onClick={props.onUpload}>Upload screenshots</PrimaryButton>
-      </div>
-
-      {screenshots.length > 0 && (
-        <section className="dashboard-section">
-          <div className="dashboard-section-head">
-            <h3>Uploaded screenshots</h3>
-            <span>{screenshots.length} image{screenshots.length === 1 ? "" : "s"}</span>
-          </div>
-          <div className="uploaded-shot-list">
-            {screenshots.slice(0, 12).map((shot) => (
-              <a className="uploaded-shot" key={shot.id} href={endpoints.screenshotImageUrl(shot.id)} target="_blank" rel="noreferrer">
-                <span className="uploaded-shot-thumb">
-                  <img src={endpoints.screenshotImageUrl(shot.id)} alt={shot.original_name} loading="lazy" />
-                </span>
-                <span className="uploaded-shot-info">
-                  <strong>{shot.original_name}</strong>
-                  <small>{shot.width || 0} x {shot.height || 0} / {shot.error ? "Failed" : shot.processed_at > 0 ? "Read" : "Uploaded"}</small>
-                </span>
-                <span className={shot.error ? "uploaded-shot-status is-failed" : "uploaded-shot-status"}>
-                  {shot.error ? "Failed" : shot.processed_at > 0 ? "Read" : "Open"}
-                </span>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-
       {!hasOrders ? (
         <EmptyState
           icon={<IconInbox size={22} />}
-          title="No orders summarized yet"
-          body="Upload screenshots and OrderLedger will build the dashboard automatically."
-        />
+          title="No dashboard yet"
+          body="Go to Import to upload or retry reading screenshots. Dashboard appears after orders are extracted."
+        >
+          <PrimaryButton onClick={props.onOpenImport}>Open Import</PrimaryButton>
+        </EmptyState>
       ) : (
         <>
           <section className="dashboard-section">

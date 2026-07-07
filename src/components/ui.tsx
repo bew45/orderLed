@@ -95,6 +95,15 @@ export const IconInbox = svg(
   </>
 );
 
+export const IconChart = svg(
+  <>
+    <path d="M4.5 19.5h15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    <rect x="6" y="11" width="3.5" height="6" rx="1" stroke="currentColor" strokeWidth="1.6" />
+    <rect x="10.25" y="7" width="3.5" height="10" rx="1" stroke="currentColor" strokeWidth="1.6" />
+    <rect x="14.5" y="4.5" width="3.5" height="12.5" rx="1" stroke="currentColor" strokeWidth="1.6" />
+  </>
+);
+
 export const IconCheckCircle = svg(
   <>
     <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
@@ -237,11 +246,12 @@ export function ProcessingProgressCard(props: {
   );
 }
 
-export type TabKey = "home" | "batches" | "export";
+export type TabKey = "import" | "home" | "batches" | "export";
 
 export function TabBar(props: { active: TabKey; attentionCount?: number; onSelect: (tab: TabKey) => void }) {
   const items: Array<{ key: TabKey; label: string; icon: (p: IconProps) => React.ReactElement }> = [
-    { key: "home", label: "Home", icon: IconHome },
+    { key: "import", label: "Import", icon: IconCamera },
+    { key: "home", label: "Dash", icon: IconChart },
     { key: "batches", label: "History", icon: IconHistory },
     { key: "export", label: "Export", icon: IconExport }
   ];

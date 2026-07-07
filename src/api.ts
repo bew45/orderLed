@@ -126,6 +126,7 @@ export const endpoints = {
   getModels: () => api<{ models: ProviderModel[] }>("/api/settings/openrouter-models"),
 
   screenshotImageUrl: (id: string) => `/api/screenshots/${id}/image`,
+  deleteScreenshot: (id: string) => api<{ ok: true }>(`/api/screenshots/${id}`, { method: "DELETE" }),
 
   exportUrl: (batchId: string, kind: "xls" | "csv" | "pdf", month?: string) =>
     `/api/batches/${batchId}/export.${kind}${month ? `?month=${encodeURIComponent(month)}` : ""}`

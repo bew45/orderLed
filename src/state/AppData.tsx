@@ -22,6 +22,7 @@ type AppDataValue = {
   deleteBatch: (id: string) => Promise<void>;
   uploadFiles: (files: FileList | File[]) => Promise<UploadResult>;
   processActiveBatch: (force?: boolean) => Promise<BatchSummary>;
+  deleteScreenshot: (id: string) => Promise<void>;
   updateOrder: (id: string, patch: Partial<OrderRow>) => Promise<OrderRow>;
   deleteOrder: (id: string) => Promise<void>;
   refreshSettings: () => Promise<void>;
@@ -232,6 +233,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const data = await endpoints.processBatch(activeBatchId, force);
       await syncActiveData("process");
       return data.summary;
+    },
+
+    deleteScreenshot: async (id) => {
+      await endpoints.deleteScreenshot(id);
+      setScreenshots((current) => current.filter((shot) => shot.id !== id));
+      await syncActiveData("delete-screenshot");
     },
 
     updateOrder: async (id, patch) => {

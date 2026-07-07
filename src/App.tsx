@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { AppDataProvider, useAppData } from "./state/AppData";
 import { HomeScreen } from "./screens/HomeScreen";
+import { ImportScreen } from "./screens/ImportScreen";
 import { BatchesScreen } from "./screens/BatchesScreen";
 import { ExportScreen } from "./screens/ExportScreen";
 import { UploadFlow } from "./screens/UploadFlow";
@@ -10,7 +11,7 @@ import { Alert, IconGear, TabBar, type TabKey } from "./components/ui";
 
 function Shell() {
   const { summary, error, clearError, loading } = useAppData();
-  const [tab, setTab] = useState<TabKey>("home");
+  const [tab, setTab] = useState<TabKey>("import");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createBatchOpen, setCreateBatchOpen] = useState(false);
@@ -43,14 +44,20 @@ function Shell() {
         </div>
       )}
 
-      {tab === "home" && (
-        <HomeScreen
+      {tab === "import" && (
+        <ImportScreen
           onUpload={() => setUploadOpen(true)}
           onCreateBatch={() => setCreateBatchOpen(true)}
         />
       )}
+      {tab === "home" && (
+        <HomeScreen
+          onCreateBatch={() => setCreateBatchOpen(true)}
+          onOpenImport={() => setTab("import")}
+        />
+      )}
       {tab === "batches" && (
-        <BatchesScreen onCreateBatch={() => setCreateBatchOpen(true)} />
+        <BatchesScreen onCreateBatch={() => setCreateBatchOpen(true)} onSelected={() => setTab("import")} />
       )}
       {tab === "export" && <ExportScreen />}
 
@@ -59,12 +66,12 @@ function Shell() {
       {uploadOpen && (
         <UploadFlow
           onClose={() => setUploadOpen(false)}
-          onDone={() => { setUploadOpen(false); setTab("home"); }}
+          onDone={() => { setUploadOpen(false); setTab("import"); }}
         />
       )}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
       {createBatchOpen && (
-        <CreateBatchSheet onClose={() => setCreateBatchOpen(false)} onCreated={() => setTab("home")} />
+        <CreateBatchSheet onClose={() => setCreateBatchOpen(false)} onCreated={() => setTab("import")} />
       )}
     </div>
   );

@@ -13,6 +13,7 @@ import {
   createBatch,
   deleteBatch,
   deleteOrder,
+  deleteScreenshot,
   getBatch,
   getBatchSummary,
   getScreenshot,
@@ -187,6 +188,15 @@ app.get("/api/screenshots/:id/image", (req, res) => {
     const path = readStoredImage(shot.storage_path);
     res.setHeader("Cache-Control", "private, max-age=86400");
     createReadStream(path).pipe(res);
+  } catch (error: any) {
+    res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+app.delete("/api/screenshots/:id", (req, res) => {
+  try {
+    if (!deleteScreenshot(req.params.id)) return void res.status(404).json({ error: "Screenshot not found" });
+    res.json({ ok: true });
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
   }

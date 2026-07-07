@@ -92,6 +92,37 @@ export function getScreenshot(id: string) {
   return one<Screenshot>(db.prepare("SELECT * FROM screenshots WHERE id=?").get(id));
 }
 
+export function deleteScreenshot(id: string) {
+  const shot = getScreenshot(id);
+  if (!shot) return false;
+  const ts = now();
+
+  try {
+    db.exec("BEGIN");
+    const orders = listOrders(shot.batch_id);
+    for (const order of orders) {
+      const ids = parseJson<string[]>(order.source_screenshot_ids_json, []);
+      if (!ids.includes(id)) continue;
+      const nextIds = ids.filter((sourceId) => sourceId !== id);
+      if (nextIds.length === 0) {
+        db.prepare("DELETE FROM orders WHERE id=?").run(order.id);
+      } else {
+        db.prepare("UPDATE orders SET source_screenshot_ids_json=?, updated_at=? WHERE id=?")
+          .run(json(nextIds), ts, order.id);
+      }
+    }
+    db.prepare("DELETE FROM screenshots WHERE id=?").run(id);
+    db.prepare("UPDATE batches SET updated_at=? WHERE id=?").run(ts, shot.batch_id);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  deleteStoredImage(shot.storage_path);
+  return true;
+}
+
 export function markScreenshotProcessed(id: string, error = "") {
   const ts = now();
   db.prepare("UPDATE screenshots SET processed_at=?, error=?, updated_at=? WHERE id=?").run(error ? 0 : ts, error, ts, id);
