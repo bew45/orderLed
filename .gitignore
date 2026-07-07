@@ -6,3 +6,5 @@ data/
 .venv-ocr/
 *.log
 *.tsbuildinfo
+.claude/
+orderledger-kit/
