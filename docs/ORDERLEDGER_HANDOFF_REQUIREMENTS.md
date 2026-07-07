@@ -56,6 +56,7 @@ Current frontend exists only as a functional placeholder:
 - summary cards
 - editable table
 - export links
+- settings sheet scaffold with OpenRouter/OCR fields, searchable model picker, selected model row, and favorite model stars
 
 The current frontend should be replaced by a more polished mobile-first experience.
 
@@ -109,8 +110,36 @@ The designer should produce:
 - processing/progress state
 - review queue
 - order detail/edit sheet
+- settings screen or bottom sheet for extraction model setup
 - export screen
 - future analytics/dashboard direction
+
+## Settings UX Requirement
+
+A basic Settings scaffold now exists. It is functional, not final.
+
+The next UX/UI AI should redesign it fully while preserving the product intent:
+
+- make model setup feel safe and understandable
+- keep OpenRouter as the recommended accurate extraction path
+- allow the user to paste/update an API key
+- allow choosing a model from a searchable list
+- allow favoriting models with a star/pin interaction
+- show the selected model clearly
+- keep OCR settings present but visually secondary/optional
+- make it work well on iPhone, ideally as a bottom sheet or focused settings screen
+
+The current scaffold uses this interaction pattern:
+
+- provider chip
+- search box
+- Favorites section
+- All models section
+- selected checkmark
+- favorite star
+- model id/name/context metadata
+
+Do not copy the current styling exactly. Treat it as interaction proof. Redesign the UI to be modern, polished, and consistent with the new OrderLedger visual system.
 
 ## Mobile-First User Flow
 
@@ -328,6 +357,37 @@ GET /api/batches/:id/export.csv
 GET /api/batches/:id/export.pdf
 ```
 
+### Settings
+
+```text
+GET /api/settings
+PATCH /api/settings
+GET /api/settings/openrouter-models
+```
+
+Settings fields:
+
+```json
+{
+  "openrouter_api_key": "masked on read when present",
+  "openrouter_model": "google/gemini-2.0-flash-001",
+  "openrouter_base_url": "https://openrouter.ai/api/v1",
+  "paddle_python": ".venv-ocr\\Scripts\\python.exe",
+  "paddle_lang": "th",
+  "paddle_timeout_ms": 90000,
+  "favorite_models": ["google/gemini-2.0-flash-001"]
+}
+```
+
+Notes:
+
+- settings are stored locally in SQLite `app_settings`
+- `.env` values are defaults
+- saved settings override `.env`
+- `openrouter_api_key` is masked on read as `••••••••`
+- sending the masked value back preserves the stored key
+- model list comes from OpenRouter `/models`
+
 ## Current Data Concepts
 
 ### Batch
@@ -418,6 +478,7 @@ Current recommendation:
 
 - configure OpenRouter first
 - keep OCR installed but do not rely on it as the only extraction path until the Paddle runtime issue is resolved
+- users can also configure these through the current Settings scaffold in the app
 
 ## How To Run
 

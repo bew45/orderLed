@@ -36,6 +36,23 @@ type OrderRow = {
   evidence_json: string;
 };
 
+type AppSettings = {
+  openrouter_api_key: string;
+  openrouter_model: string;
+  openrouter_base_url: string;
+  paddle_python: string;
+  paddle_lang: string;
+  paddle_timeout_ms: number;
+  favorite_models: string[];
+};
+
+type ProviderModel = {
+  id: string;
+  name: string;
+  context_length: number;
+  pricing?: Record<string, unknown>;
+};
+
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -66,6 +83,7 @@ function App() {
   const [files, setFiles] = useState<FileList | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const activeBatch = useMemo(() => batches.find((batch) => batch.id === activeId), [batches, activeId]);
   const reviewCount = orders.filter((order) => order.review_state === "needs_review").length;
@@ -165,11 +183,14 @@ function App() {
           <p className="subtitle">Upload delivery history screenshots, extract order rows, review weak reads, and export clean reports.</p>
         </div>
         <div className="hero-actions">
+          <button className="ghost-button" onClick={() => setSettingsOpen(true)}>Settings</button>
           <a className="export-button" href={exportUrl("xls")}>Export Excel</a>
           <a className="ghost-button" href={exportUrl("csv")}>CSV</a>
           <a className="ghost-button" href={exportUrl("pdf")}>PDF</a>
         </div>
       </section>
+
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
 
       {error && <div className="error">{error}</div>}
       {busy && <div className="busy">{busy}</div>}
@@ -288,6 +309,230 @@ function App() {
         </section>
       </section>
     </main>
+  );
+}
+
+function SettingsSheet({ onClose }: { onClose: () => void }) {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [draft, setDraft] = useState<AppSettings | null>(null);
+  const [models, setModels] = useState<ProviderModel[]>([]);
+  const [search, setSearch] = useState("");
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api<{ settings: AppSettings }>("/api/settings")
+      .then((data) => {
+        setSettings(data.settings);
+        setDraft(data.settings);
+      })
+      .catch((err) => setError(err.message));
+  }, []);
+
+  useEffect(() => {
+    setLoadingModels(true);
+    api<{ models: ProviderModel[] }>("/api/settings/openrouter-models")
+      .then((data) => setModels(data.models))
+      .catch(() => setModels([]))
+      .finally(() => setLoadingModels(false));
+  }, []);
+
+  if (!draft) {
+    return (
+      <div className="settings-overlay">
+        <button className="settings-scrim" onClick={onClose} aria-label="Close settings" />
+        <section className="settings-sheet">
+          <div className="settings-head">
+            <div>
+              <p className="eyebrow">settings</p>
+              <h2>Extraction setup</h2>
+            </div>
+            <button className="ghost-button" onClick={onClose}>Close</button>
+          </div>
+          <div className="settings-empty">{error || "Loading settings..."}</div>
+        </section>
+      </div>
+    );
+  }
+
+  const favoriteSet = new Set(draft.favorite_models);
+  const q = search.trim().toLowerCase();
+  const favoriteModels = draft.favorite_models
+    .map((id) => models.find((model) => model.id === id) ?? { id, name: id, context_length: 0 })
+    .filter((model) => !q || model.id.toLowerCase().includes(q) || model.name.toLowerCase().includes(q));
+  const visibleModels = models.filter((model) => !q || model.id.toLowerCase().includes(q) || model.name.toLowerCase().includes(q));
+
+  function patch(patchValue: Partial<AppSettings>) {
+    setDraft((current) => current ? { ...current, ...patchValue } : current);
+  }
+
+  function toggleFavorite(modelId: string) {
+    if (!draft) return;
+    const next = favoriteSet.has(modelId)
+      ? draft.favorite_models.filter((id) => id !== modelId)
+      : [...draft.favorite_models, modelId];
+    patch({ favorite_models: next });
+  }
+
+  async function save() {
+    if (!draft) return;
+    setError("");
+    setNote("Saving...");
+    try {
+      const payload = {
+        ...draft,
+        openrouter_api_key: draft.openrouter_api_key === settings?.openrouter_api_key ? draft.openrouter_api_key : draft.openrouter_api_key
+      };
+      const data = await api<{ settings: AppSettings }>("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      });
+      setSettings(data.settings);
+      setDraft(data.settings);
+      setNote("Saved");
+    } catch (err: any) {
+      setNote("");
+      setError(err.message);
+    }
+  }
+
+  function pickModel(modelId: string) {
+    patch({ openrouter_model: modelId });
+  }
+
+  return (
+    <div className="settings-overlay">
+      <button className="settings-scrim" onClick={onClose} aria-label="Close settings" />
+      <section className="settings-sheet">
+        <div className="settings-head">
+          <div>
+            <p className="eyebrow">settings</p>
+            <h2>Extraction setup</h2>
+            <p>OpenRouter is the recommended accurate path for iPhone screenshot extraction.</p>
+          </div>
+          <button className="ghost-button" onClick={onClose}>Close</button>
+        </div>
+
+        {error && <div className="error">{error}</div>}
+        {note && <div className="busy">{note}</div>}
+
+        <div className="settings-grid">
+          <section className="settings-card">
+            <div className="settings-section-title">
+              <span>Vision extractor</span>
+              <strong>OpenRouter</strong>
+            </div>
+            <label>
+              API key
+              <input
+                type="password"
+                value={draft.openrouter_api_key}
+                placeholder="sk-or-..."
+                onChange={(e) => patch({ openrouter_api_key: e.target.value })}
+              />
+            </label>
+            <label>
+              Base URL
+              <input value={draft.openrouter_base_url} onChange={(e) => patch({ openrouter_base_url: e.target.value })} />
+            </label>
+            <label>
+              Selected model
+              <input value={draft.openrouter_model} onChange={(e) => patch({ openrouter_model: e.target.value })} />
+            </label>
+          </section>
+
+          <section className="settings-card">
+            <div className="settings-section-title">
+              <span>Local OCR</span>
+              <strong>optional</strong>
+            </div>
+            <label>
+              Python path
+              <input value={draft.paddle_python} placeholder=".venv-ocr\\Scripts\\python.exe" onChange={(e) => patch({ paddle_python: e.target.value })} />
+            </label>
+            <div className="settings-two">
+              <label>
+                OCR language
+                <input value={draft.paddle_lang} onChange={(e) => patch({ paddle_lang: e.target.value })} />
+              </label>
+              <label>
+                Timeout ms
+                <input type="number" value={draft.paddle_timeout_ms} onChange={(e) => patch({ paddle_timeout_ms: Number(e.target.value) })} />
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <section className="settings-card model-picker-card">
+          <div className="settings-section-title">
+            <span>Model picker</span>
+            <strong>{loadingModels ? "loading" : `${models.length} models`}</strong>
+          </div>
+          <div className="model-toolbar">
+            <button className="provider-chip is-on">OpenRouter</button>
+            <input value={search} placeholder="Search models" onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <div className="model-list">
+            {favoriteModels.length > 0 && <div className="model-section">Favorites</div>}
+            {favoriteModels.map((model) => (
+              <ModelRow
+                key={`fav-${model.id}`}
+                model={model}
+                selected={draft.openrouter_model === model.id}
+                favorite={favoriteSet.has(model.id)}
+                onPick={() => pickModel(model.id)}
+                onFavorite={() => toggleFavorite(model.id)}
+              />
+            ))}
+            <div className="model-section">All models</div>
+            {loadingModels ? (
+              <div className="settings-empty">Loading models...</div>
+            ) : visibleModels.length === 0 ? (
+              <div className="settings-empty">No models loaded. You can still type a model manually above.</div>
+            ) : (
+              visibleModels.slice(0, 140).map((model) => (
+                <ModelRow
+                  key={model.id}
+                  model={model}
+                  selected={draft.openrouter_model === model.id}
+                  favorite={favoriteSet.has(model.id)}
+                  onPick={() => pickModel(model.id)}
+                  onFavorite={() => toggleFavorite(model.id)}
+                />
+              ))
+            )}
+          </div>
+        </section>
+
+        <div className="settings-actions">
+          <button className="ghost-button" onClick={onClose}>Cancel</button>
+          <button onClick={save}>Save settings</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ModelRow(props: {
+  model: ProviderModel;
+  selected: boolean;
+  favorite: boolean;
+  onPick: () => void;
+  onFavorite: () => void;
+}) {
+  return (
+    <div className={props.selected ? "model-row selected" : "model-row"}>
+      <button className="model-main" onClick={props.onPick}>
+        <span className="model-check">{props.selected ? "✓" : ""}</span>
+        <span className="model-name">{props.model.name || props.model.id}</span>
+        <span className="model-id">{props.model.id}</span>
+        {props.model.context_length ? <span className="model-meta">{props.model.context_length.toLocaleString()} ctx</span> : null}
+      </button>
+      <button className={props.favorite ? "model-star on" : "model-star"} onClick={props.onFavorite} aria-label="Favorite model">
+        {props.favorite ? "★" : "☆"}
+      </button>
+    </div>
   );
 }
 

@@ -82,3 +82,13 @@ export type BatchSummary = {
   completedSpend: number;
   refundedOrCancelled: number;
 };
+
+export type AppSettings = {
+  openrouter_api_key: string;
+  openrouter_model: string;
+  openrouter_base_url: string;
+  paddle_python: string;
+  paddle_lang: string;
+  paddle_timeout_ms: number;
+  favorite_models: string[];
+};

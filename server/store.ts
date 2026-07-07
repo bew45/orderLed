@@ -1,9 +1,9 @@
 import { db, now, uuid } from "./db";
 import { deleteStoredImage } from "./image-store";
 import { json, parseJson } from "./json";
-import type { Batch, BatchSummary, OrderRow, ReviewState, Screenshot, SourceApp } from "./types";
+import type { AppSettings, Batch, BatchSummary, OrderRow, ReviewState, Screenshot, SourceApp } from "./types";
 
-function row<T>(value: unknown) {
+function one<T>(value: unknown) {
   return value as T | undefined;
 }
 
@@ -23,7 +23,7 @@ export function listBatches() {
 }
 
 export function getBatch(id: string) {
-  return row<Batch>(db.prepare("SELECT * FROM batches WHERE id=?").get(id));
+  return one<Batch>(db.prepare("SELECT * FROM batches WHERE id=?").get(id));
 }
 
 export function deleteBatch(id: string) {
@@ -89,7 +89,7 @@ export function listScreenshots(batchId: string) {
 }
 
 export function getScreenshot(id: string) {
-  return row<Screenshot>(db.prepare("SELECT * FROM screenshots WHERE id=?").get(id));
+  return one<Screenshot>(db.prepare("SELECT * FROM screenshots WHERE id=?").get(id));
 }
 
 export function markScreenshotProcessed(id: string, error = "") {
@@ -113,7 +113,7 @@ export function upsertOrder(input: {
   sourceScreenshotId: string;
   evidence: unknown;
 }) {
-  const existing = row<OrderRow>(
+  const existing = one<OrderRow>(
     db.prepare("SELECT * FROM orders WHERE batch_id=? AND duplicate_key=?").get(input.batchId, input.duplicateKey)
   );
   const ts = now();
@@ -208,7 +208,7 @@ export function upsertOrder(input: {
 }
 
 export function getOrder(id: string) {
-  return row<OrderRow>(db.prepare("SELECT * FROM orders WHERE id=?").get(id));
+  return one<OrderRow>(db.prepare("SELECT * FROM orders WHERE id=?").get(id));
 }
 
 export function listOrders(batchId: string) {
@@ -280,4 +280,44 @@ export function getBatchSummary(batchId: string): BatchSummary {
 
 function touchBatch(id: string) {
   db.prepare("UPDATE batches SET updated_at=? WHERE id=?").run(now(), id);
+}
+
+const SETTINGS_KEY = "app";
+
+function nonEmpty(...values: Array<unknown>) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+export function getAppSettings(): AppSettings {
+  const settingsRow = one<{ value_json: string }>(db.prepare("SELECT value_json FROM app_settings WHERE key=?").get(SETTINGS_KEY));
+  const saved = parseJson<Partial<AppSettings>>(settingsRow?.value_json, {});
+  return {
+    openrouter_api_key: nonEmpty(saved.openrouter_api_key, process.env.OPENROUTER_API_KEY),
+    openrouter_model: nonEmpty(saved.openrouter_model, process.env.OPENROUTER_MODEL, "google/gemini-2.0-flash-001"),
+    openrouter_base_url: nonEmpty(saved.openrouter_base_url, process.env.OPENROUTER_BASE_URL, "https://openrouter.ai/api/v1"),
+    paddle_python: nonEmpty(saved.paddle_python, process.env.ORDERLEDGER_PADDLE_PYTHON),
+    paddle_lang: nonEmpty(saved.paddle_lang, process.env.ORDERLEDGER_PADDLE_LANG, "th"),
+    paddle_timeout_ms: Number(saved.paddle_timeout_ms ?? process.env.ORDERLEDGER_PADDLE_TIMEOUT_MS ?? 90000),
+    favorite_models: Array.isArray(saved.favorite_models) ? saved.favorite_models.filter(Boolean) : []
+  };
+}
+
+export function saveAppSettings(patch: Partial<AppSettings>) {
+  const current = getAppSettings();
+  const next: AppSettings = {
+    ...current,
+    ...patch,
+    favorite_models: Array.isArray(patch.favorite_models) ? patch.favorite_models.filter(Boolean) : current.favorite_models,
+    paddle_timeout_ms: Math.max(1000, Number(patch.paddle_timeout_ms ?? current.paddle_timeout_ms) || 90000)
+  };
+  db.prepare(`
+    INSERT INTO app_settings (key, value_json, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at
+  `).run(SETTINGS_KEY, json(next), now());
+  return next;
 }

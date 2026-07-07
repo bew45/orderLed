@@ -291,6 +291,230 @@ td select {
   font-weight: 700;
 }
 
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.settings-scrim {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  border-radius: 0;
+  background: rgba(22, 18, 12, .42);
+  cursor: default;
+}
+
+.settings-sheet {
+  position: absolute;
+  inset: auto 10px 10px auto;
+  display: grid;
+  gap: 14px;
+  width: min(760px, calc(100vw - 20px));
+  max-height: calc(100svh - 20px);
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, .26);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 244, .98), rgba(247, 239, 226, .98)),
+    #fffaf0;
+  box-shadow: 0 28px 80px rgba(28, 22, 12, .28);
+  padding: 16px;
+}
+
+.settings-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.settings-head h2 {
+  margin-bottom: 4px;
+  font-size: 24px;
+}
+
+.settings-head p {
+  margin-bottom: 0;
+  color: #706556;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(99, 77, 43, .14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .58);
+  padding: 14px;
+}
+
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #75634d;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.settings-section-title strong {
+  border-radius: 999px;
+  background: #f1e3c8;
+  color: #7a531b;
+  padding: 4px 8px;
+}
+
+.settings-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.model-picker-card {
+  padding-bottom: 10px;
+}
+
+.model-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.provider-chip {
+  border: 1px solid rgba(151, 112, 45, .24);
+  background: #fff6e3;
+  color: #775019;
+}
+
+.provider-chip.is-on {
+  background: #2d261b;
+  color: #fff8e9;
+}
+
+.model-list {
+  display: grid;
+  gap: 7px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.model-section {
+  margin-top: 8px;
+  color: #8a7557;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  overflow: hidden;
+  border: 1px solid rgba(88, 68, 38, .14);
+  border-radius: 10px;
+  background: rgba(255, 252, 245, .88);
+}
+
+.model-row.selected {
+  border-color: rgba(177, 127, 42, .62);
+  background: #fff3d8;
+}
+
+.model-main {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "check name meta"
+    "check id meta";
+  gap: 2px 8px;
+  min-height: 54px;
+  justify-items: start;
+  border-radius: 0;
+  background: transparent;
+  color: #241f18;
+  text-align: left;
+}
+
+.model-check {
+  grid-area: check;
+  color: #9d6c20;
+  font-weight: 900;
+}
+
+.model-name {
+  grid-area: name;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.model-id {
+  grid-area: id;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #756b5f;
+  font-size: 11px;
+}
+
+.model-meta {
+  grid-area: meta;
+  align-self: center;
+  border-radius: 999px;
+  background: rgba(45, 38, 27, .08);
+  color: #65543a;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.model-star {
+  min-height: 100%;
+  border-left: 1px solid rgba(88, 68, 38, .12);
+  border-radius: 0;
+  background: rgba(255, 255, 255, .38);
+  color: #8f7a5d;
+  font-size: 18px;
+}
+
+.model-star.on {
+  color: #b77a18;
+}
+
+.settings-empty {
+  border-radius: 12px;
+  background: rgba(255,255,255,.54);
+  color: #756b5f;
+  padding: 14px;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  position: sticky;
+  bottom: -16px;
+  margin-inline: -16px;
+  margin-bottom: -16px;
+  border-top: 1px solid rgba(99, 77, 43, .14);
+  background: rgba(255, 250, 240, .94);
+  padding: 12px 16px;
+  backdrop-filter: blur(10px);
+}
+
 .error {
   background: #ffe3df;
   color: #8b1e13;
@@ -326,5 +550,21 @@ td select {
   .stats,
   .upload-panel {
     grid-template-columns: 1fr;
+  }
+
+  .settings-sheet {
+    inset: auto 6px 6px 6px;
+    width: auto;
+    border-radius: 18px 18px 14px 14px;
+  }
+
+  .settings-grid,
+  .settings-two,
+  .model-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-head {
+    display: grid;
   }
 }

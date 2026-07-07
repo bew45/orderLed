@@ -16,8 +16,10 @@ import {
   getBatch,
   getBatchSummary,
   getScreenshot,
+  getAppSettings,
   listBatches,
   listOrders,
+  saveAppSettings,
   screenshotHashExists,
   updateOrder
 } from "./store";
@@ -44,6 +46,53 @@ function sendFileBuffer(res: express.Response, file: { buffer: Buffer; contentTy
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, app: "OrderLedger" });
+});
+
+app.get("/api/settings", (_req, res) => {
+  try {
+    const settings = getAppSettings();
+    res.json({ settings: { ...settings, openrouter_api_key: settings.openrouter_api_key ? "••••••••" : "" } });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/settings", (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const current = getAppSettings();
+    const patch = {
+      ...body,
+      openrouter_api_key: body.openrouter_api_key === "••••••••" ? current.openrouter_api_key : body.openrouter_api_key
+    };
+    const settings = saveAppSettings(patch);
+    res.json({ settings: { ...settings, openrouter_api_key: settings.openrouter_api_key ? "••••••••" : "" } });
+  } catch (error: any) {
+    res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+app.get("/api/settings/openrouter-models", async (_req, res) => {
+  try {
+    const settings = getAppSettings();
+    const base = (settings.openrouter_base_url || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+    const response = await fetch(`${base}/models`, {
+      headers: settings.openrouter_api_key ? { Authorization: `Bearer ${settings.openrouter_api_key}` } : undefined
+    });
+    if (!response.ok) throw new Error(`Model list failed (${response.status})`);
+    const payload = await response.json() as any;
+    const models = Array.isArray(payload?.data)
+      ? payload.data.map((item: any) => ({
+          id: String(item.id ?? ""),
+          name: String(item.name ?? item.id ?? ""),
+          context_length: Number(item.context_length ?? 0) || 0,
+          pricing: item.pricing ?? {}
+        })).filter((item: any) => item.id)
+      : [];
+    res.json({ models });
+  } catch (error: any) {
+    res.status(errorStatus(error.message)).json({ error: error.message });
+  }
 });
 
 app.post("/api/batches", (req, res) => {

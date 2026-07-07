@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { readStoredImage } from "../image-store";
 import { parseJson } from "../json";
+import { getAppSettings } from "../store";
 import type { ExtractedOrder, OcrRow, Screenshot, SourceApp } from "../types";
 
 type ExtractionResult = {
@@ -9,11 +10,11 @@ type ExtractionResult = {
 };
 
 function baseUrl() {
-  return (process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+  return (getAppSettings().openrouter_base_url || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
 }
 
 function model() {
-  return process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001";
+  return getAppSettings().openrouter_model || "google/gemini-2.0-flash-001";
 }
 
 function imageDataUrl(screenshot: Screenshot) {
@@ -42,7 +43,7 @@ export async function extractWithOpenRouter(input: {
   ocrRows: OcrRow[];
   sourceAppGuess: SourceApp;
 }): Promise<ExtractionResult | null> {
-  const key = process.env.OPENROUTER_API_KEY;
+  const key = getAppSettings().openrouter_api_key;
   if (!key) return null;
 
   const compactRows = input.ocrRows.map((row) => ({

@@ -1,19 +1,20 @@
 import { spawn } from "child_process";
 import { readStoredImage } from "../image-store";
+import { getAppSettings } from "../store";
 import type { OcrRow, Screenshot } from "../types";
 
 const DEFAULT_TIMEOUT_MS = 90000;
 
 function pythonCommand() {
-  return process.env.ORDERLEDGER_PADDLE_PYTHON || process.env.PYTHON || "python";
+  return getAppSettings().paddle_python || process.env.PYTHON || "python";
 }
 
 function paddleLang() {
-  return process.env.ORDERLEDGER_PADDLE_LANG || "th";
+  return getAppSettings().paddle_lang || "th";
 }
 
 function timeoutMs() {
-  return Math.max(1000, Number(process.env.ORDERLEDGER_PADDLE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
+  return Math.max(1000, Number(getAppSettings().paddle_timeout_ms ?? DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
 }
 
 let queue = Promise.resolve();
