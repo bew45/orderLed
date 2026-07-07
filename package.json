@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
-    "dev:server": "tsx watch server/index.ts",
+    "dev": "concurrently --names server,web --prefix-colors green,cyan --kill-others-on-fail \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch --clear-screen=false --include .env server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "start": "node dist-server/index.js",
