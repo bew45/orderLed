@@ -34,6 +34,10 @@ function firstItem(itemsText: string) {
   return first || "No item text yet";
 }
 
+function isMonthlyTotalSnapshot(order: OrderRow) {
+  return order.duplicate_key.startsWith("legacy-monthly-total:");
+}
+
 function summarizeOrders(orders: OrderRow[]) {
   const netSpend = orders.reduce((sum, order) => sum + orderAmount(order), 0);
   const completedSpend = orders
@@ -64,10 +68,11 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
   const [selectedMonth, setSelectedMonth] = useState("all");
 
   const dashboard = useMemo(() => {
+    const isMonthlyTotalBatch = orders.length > 0 && orders.every(isMonthlyTotalSnapshot);
     const monthly = aggregate(orders, (order) => {
       const month = orderMonth(order);
       return { key: month, label: monthLabel(month) };
-    });
+    }).sort((a, b) => a.key.localeCompare(b.key));
     const months = monthly.map((row) => row.key);
     const filteredOrders = selectedMonth === "all"
       ? orders
@@ -77,6 +82,7 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
     return {
       months,
       monthly,
+      isMonthlyTotalBatch,
       filteredOrders,
       totals,
       restaurants: aggregate(filteredOrders, (order) => ({
@@ -116,6 +122,8 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
   const hasScreenshots = (summary?.screenshotsTotal ?? 0) > 0;
   const hasOrders = orders.length > 0;
   const currentLabel = selectedMonth === "all" ? "All detected months" : monthLabel(selectedMonth);
+  const rowLabel = dashboard.isMonthlyTotalBatch ? "monthly total" : "order";
+  const rowLabelPlural = dashboard.isMonthlyTotalBatch ? "monthly totals" : "orders";
 
   return (
     <div className="screen">
@@ -128,19 +136,22 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
         <span className="dashboard-hero-label">{currentLabel}</span>
         <strong className="dashboard-hero-total tabular">{money(dashboard.totals.netSpend)}</strong>
         <span className="dashboard-hero-meta">
-          {dashboard.totals.ordersTotal} orders / {dashboard.months.length} month{dashboard.months.length === 1 ? "" : "s"} / {dashboard.restaurants.length} restaurant{dashboard.restaurants.length === 1 ? "" : "s"}
+          {dashboard.totals.ordersTotal} {rowLabelPlural} / {dashboard.months.length} month{dashboard.months.length === 1 ? "" : "s"}
+          {dashboard.isMonthlyTotalBatch ? "" : ` / ${dashboard.restaurants.length} restaurant${dashboard.restaurants.length === 1 ? "" : "s"}`}
         </span>
       </section>
 
       <div className="stat-grid">
         <StatCard label="Net spend" value={money(dashboard.totals.netSpend)} />
         <StatCard label="Completed" value={money(dashboard.totals.completedSpend)} />
-        <StatCard label="Orders" value={String(dashboard.totals.ordersTotal)} />
+        <StatCard label={dashboard.isMonthlyTotalBatch ? "Rows" : "Orders"} value={String(dashboard.totals.ordersTotal)} />
         <StatCard label="Needs check" value={String(dashboard.totals.needsCheck)} tone={dashboard.totals.needsCheck > 0 ? "warn" : undefined} />
       </div>
 
       <div className="home-status-line">
-        {hasScreenshots
+        {dashboard.isMonthlyTotalBatch
+          ? "Legacy monthly totals imported as summary rows. New screenshot imports will still extract restaurant-level orders."
+          : hasScreenshots
           ? `Import: ${summary?.screenshotsTotal} screenshots / ${summary?.screenshotsProcessed} processed / ${summary?.screenshotsFailed} failed`
           : "No screenshots uploaded yet for this import."}
       </div>
@@ -175,7 +186,7 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
                 <div className="dashboard-rank-row" key={row.key}>
                   <span className="dashboard-row-main">
                     <strong>{row.label}</strong>
-                    <small>{row.count} order{row.count === 1 ? "" : "s"}</small>
+                    <small>{row.count} {row.count === 1 ? rowLabel : rowLabelPlural}</small>
                   </span>
                   <span className="dashboard-row-money tabular">{money(row.amount)}</span>
                 </div>
@@ -183,58 +194,62 @@ export function HomeScreen(props: { onUpload: () => void; onCreateBatch: () => v
             </div>
           </section>
 
-          <section className="dashboard-section">
-            <div className="dashboard-section-head">
-              <h3>Restaurants</h3>
-              <span>{dashboard.restaurants.length} found</span>
-            </div>
-            <div className="dashboard-list">
-              {dashboard.restaurants.slice(0, 10).map((row, index) => (
-                <div className="dashboard-rank-row" key={row.key}>
-                  <span className="dashboard-rank tabular">{index + 1}</span>
-                  <span className="dashboard-row-main">
-                    <strong>{row.label}</strong>
-                    <small>{row.count} order{row.count === 1 ? "" : "s"}</small>
-                  </span>
-                  <span className="dashboard-row-money tabular">{money(row.amount)}</span>
+          {!dashboard.isMonthlyTotalBatch && (
+            <>
+              <section className="dashboard-section">
+                <div className="dashboard-section-head">
+                  <h3>Restaurants</h3>
+                  <span>{dashboard.restaurants.length} found</span>
                 </div>
-              ))}
-            </div>
-          </section>
+                <div className="dashboard-list">
+                  {dashboard.restaurants.slice(0, 10).map((row, index) => (
+                    <div className="dashboard-rank-row" key={row.key}>
+                      <span className="dashboard-rank tabular">{index + 1}</span>
+                      <span className="dashboard-row-main">
+                        <strong>{row.label}</strong>
+                        <small>{row.count} order{row.count === 1 ? "" : "s"}</small>
+                      </span>
+                      <span className="dashboard-row-money tabular">{money(row.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
-          <section className="dashboard-grid-two">
-            <div className="dashboard-section">
-              <div className="dashboard-section-head">
-                <h3>Apps</h3>
-              </div>
-              <div className="dashboard-list compact">
-                {dashboard.apps.map((row) => (
-                  <div className="dashboard-mini-row" key={row.key}>
-                    <span>{row.label}</span>
-                    <strong className="tabular">{row.count}</strong>
+              <section className="dashboard-grid-two">
+                <div className="dashboard-section">
+                  <div className="dashboard-section-head">
+                    <h3>Apps</h3>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div className="dashboard-list compact">
+                    {dashboard.apps.map((row) => (
+                      <div className="dashboard-mini-row" key={row.key}>
+                        <span>{row.label}</span>
+                        <strong className="tabular">{row.count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-            <div className="dashboard-section">
-              <div className="dashboard-section-head">
-                <h3>Status</h3>
-              </div>
-              <div className="dashboard-list compact">
-                {dashboard.statuses.map((row) => (
-                  <div className="dashboard-mini-row" key={row.key}>
-                    <span>{row.label}</span>
-                    <strong className="tabular">{row.count}</strong>
+                <div className="dashboard-section">
+                  <div className="dashboard-section-head">
+                    <h3>Status</h3>
                   </div>
-                ))}
-              </div>
-            </div>
-          </section>
+                  <div className="dashboard-list compact">
+                    {dashboard.statuses.map((row) => (
+                      <div className="dashboard-mini-row" key={row.key}>
+                        <span>{row.label}</span>
+                        <strong className="tabular">{row.count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </>
+          )}
 
           <section className="dashboard-section">
             <div className="dashboard-section-head">
-              <h3>Orders</h3>
+              <h3>{dashboard.isMonthlyTotalBatch ? "Monthly totals" : "Orders"}</h3>
               <span>{dashboard.filteredOrders.length} rows</span>
             </div>
             <div className="dashboard-order-list">
