@@ -146,7 +146,7 @@ function normalizeLlmOrders(batch: Batch, result: NonNullable<LlmResult["result"
         sourceApp: order.sourceApp ?? result.sourceApp ?? sourceAppGuess
       })
     }))
-    .filter(({ normalized }) => normalized.restaurantName || normalized.totalAmount > 0)
+    .filter(({ normalized }) => normalized.totalAmount > 0)
     .sort((a, b) => Number(a.raw.screenOrder) - Number(b.raw.screenOrder));
 }
 
@@ -259,18 +259,6 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
           const normalizedOrders = normalizeLlmOrders(batch, result, sourceAppGuess);
           const aiCandidates = aiCandidatesFromOrders(normalizedOrders);
           const attentionReasons = attentionReasonsFromLlm(result);
-          const pendingAmountCheck = ocrAmountCheckerEnabled
-            ? unavailableAmountCheck(aiCandidates, ["amount_scan_pending"])
-            : unavailableAmountCheck(aiCandidates, ["ocr_amount_checker_disabled", "manual_check_required"]);
-          persistScreenshotOrders({
-            batchId,
-            screenshot,
-            sourceAppGuess,
-            normalizedOrders,
-            amountCheck: pendingAmountCheck,
-            attentionReasons,
-            extractionEngine
-          });
           markScreenshotLlm(screenshot.id, { status: "done", extractionEngine });
           return [screenshot.id, { result, error: "", extractionEngine, normalizedOrders, aiCandidates, attentionReasons }];
         } catch (error: any) {
@@ -387,6 +375,10 @@ export async function processSingleScreenshot(screenshotId: string) {
   const batch = getBatch(screenshot.batch_id);
   if (!batch) throw new Error("Batch not found");
 
+  const controller = new AbortController();
+  activeController = controller;
+  const signal = controller.signal;
+
   const settings = getAppSettings();
   const ocrAmountCheckerEnabled = settings.ocr_amount_checker_enabled;
   const llmRunIso = new Date().toISOString();
@@ -398,63 +390,88 @@ export async function processSingleScreenshot(screenshotId: string) {
   const extractionEngine = `openrouter:${settings.openrouter_model}|run:${llmRunIso}|single:true`;
   markScreenshotLlm(screenshotId, { status: "running", extractionEngine });
 
-  let ocrRows: OcrRow[] = [];
-  let sourceAppGuess = screenshot.source_app_guess;
-  let ocrError = "";
-  let ocrAttentionReasons: string[] = [];
-
   try {
-    // Start LLM extraction
-    const result = await extractWithOpenRouter({
-      screenshot,
-      sourceAppGuess: screenshot.source_app_guess
-    });
-    if (!result) throw new Error("OpenRouter API key is required to extract orders.");
+    const llmTask = (async (): Promise<LlmResult> => {
+      try {
+        const result = await extractWithOpenRouter({
+          screenshot,
+          sourceAppGuess: screenshot.source_app_guess,
+          signal
+        });
+        if (!result) throw new Error("OpenRouter API key is required to extract orders.");
 
-    const sourceAppGuessLlm = sourceGuessFromLlm(result, screenshot.source_app_guess);
-    const normalizedOrders = normalizeLlmOrders(batch, result, sourceAppGuessLlm);
-    const aiCandidates = aiCandidatesFromOrders(normalizedOrders);
-    const attentionReasonsLlm = attentionReasonsFromLlm(result);
+        const sourceAppGuess = sourceGuessFromLlm(result, screenshot.source_app_guess);
+        const normalizedOrders = normalizeLlmOrders(batch, result, sourceAppGuess);
+        const aiCandidates = aiCandidatesFromOrders(normalizedOrders);
+        const attentionReasons = attentionReasonsFromLlm(result);
+        markScreenshotLlm(screenshotId, { status: "done", extractionEngine });
+        return { result, error: "", extractionEngine, normalizedOrders, aiCandidates, attentionReasons };
+      } catch (error: any) {
+        const message = stoppedError(error);
+        markScreenshotLlm(screenshotId, { status: "failed", extractionEngine, error: message });
+        return { result: null, error: message, extractionEngine, normalizedOrders: [], aiCandidates: [], attentionReasons: [] };
+      }
+    })();
 
-    // 2. Run OCR
-    if (ocrAmountCheckerEnabled) {
+    const ocrTask = (async (): Promise<OcrResult> => {
+      if (!ocrAmountCheckerEnabled) {
+        const skipped: OcrResult = { rows: [], error: "", sourceAppGuess: screenshot.source_app_guess, attentionReasons: [] };
+        markScreenshotOcr(screenshotId, { status: "skipped", rows: [], sourceAppGuess: screenshot.source_app_guess });
+        return skipped;
+      }
+
       markScreenshotOcr(screenshotId, { status: "running" });
       try {
-        const rows = await runOcrQueued(screenshot);
-        ocrRows = rows;
-        sourceAppGuess = sourceGuessFromOcr(screenshot, rows);
-        ocrAttentionReasons = attentionReasonsFromOcr(rows);
+        const rows = await runOcrQueued(screenshot, signal);
+        const sourceAppGuess = sourceGuessFromOcr(screenshot, rows);
+        const done: OcrResult = { rows, error: "", sourceAppGuess, attentionReasons: attentionReasonsFromOcr(rows) };
         markScreenshotOcr(screenshotId, { status: "done", rows, sourceAppGuess });
+        return done;
       } catch (error: any) {
-        ocrError = error?.message || "OCR failed";
-        markScreenshotOcr(screenshotId, { status: "failed", rows: [], sourceAppGuess: screenshot.source_app_guess, error: ocrError });
+        const message = stoppedError(error);
+        const failed: OcrResult = { rows: [], error: message, sourceAppGuess: screenshot.source_app_guess, attentionReasons: [] };
+        markScreenshotOcr(screenshotId, { status: "failed", rows: [], sourceAppGuess: screenshot.source_app_guess, error: message });
+        return failed;
       }
-    } else {
-      markScreenshotOcr(screenshotId, { status: "skipped", rows: [], sourceAppGuess: screenshot.source_app_guess });
+    })();
+
+    const [llm, ocr] = await Promise.all([llmTask, ocrTask]);
+
+    if (signal.aborted) {
+      markScreenshotProcessed(screenshotId, { error: "Processing stopped" });
+      return getBatchSummary(screenshot.batch_id);
     }
 
-    const attentionReasons = mergeReasons(attentionReasonsLlm, ocrError ? [] : ocrAttentionReasons);
+    if (!llm.result) {
+      markScreenshotProcessed(screenshotId, {
+        error: llm.error || "LLM extraction failed",
+        ocrRows: ocr.rows,
+        sourceAppGuess: ocr.sourceAppGuess,
+        extractionEngine: llm.extractionEngine
+      });
+      return getBatchSummary(screenshot.batch_id);
+    }
+
+    const attentionReasons = mergeReasons(llm.attentionReasons, ocr.attentionReasons);
     const amountCheck = !ocrAmountCheckerEnabled
-      ? unavailableAmountCheck(aiCandidates, ["ocr_amount_checker_disabled", "manual_check_required"])
-      : ocrError
-        ? unavailableAmountCheck(aiCandidates, ["amount_scan_unavailable", "manual_check_required"])
+      ? unavailableAmountCheck(llm.aiCandidates, ["ocr_amount_checker_disabled", "manual_check_required"])
+      : ocr.error
+        ? unavailableAmountCheck(llm.aiCandidates, ["amount_scan_unavailable", "manual_check_required"])
         : compareAmounts({
-            aiCandidates,
-            scannerCandidates: scanAmountCandidates(ocrRows)
+            aiCandidates: llm.aiCandidates,
+            scannerCandidates: scanAmountCandidates(ocr.rows)
           });
 
     persistScreenshotOrders({
       batchId: screenshot.batch_id,
       screenshot,
-      ocrRows,
-      sourceAppGuess,
-      normalizedOrders,
+      ocrRows: ocr.rows,
+      sourceAppGuess: ocr.sourceAppGuess,
+      normalizedOrders: llm.normalizedOrders,
       extractionEngine,
       amountCheck,
       attentionReasons
     });
-
-    markScreenshotLlm(screenshotId, { status: "done", extractionEngine });
   } catch (error: any) {
     const message = error?.message || "Processing failed";
     markScreenshotLlm(screenshotId, { status: "failed", extractionEngine, error: message });
@@ -463,7 +480,8 @@ export async function processSingleScreenshot(screenshotId: string) {
       sourceAppGuess: screenshot.source_app_guess,
       extractionEngine
     });
-    throw error;
+  } finally {
+    if (activeController === controller) activeController = null;
   }
 
   return getBatchSummary(screenshot.batch_id);
