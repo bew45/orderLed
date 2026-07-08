@@ -122,6 +122,7 @@ export type AppSettings = {
   openrouter_base_url: string;
   paddle_python: string;
   paddle_lang: string;
+  paddle_device: string;
   paddle_timeout_ms: number;
   ocr_amount_checker_enabled: boolean;
   favorite_models: string[];

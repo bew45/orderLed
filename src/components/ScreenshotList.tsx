@@ -189,8 +189,12 @@ function ScreenshotCard(props: {
         </span>
         <small className="uploaded-shot-meta">{props.shot.width || 0} x {props.shot.height || 0} / {appLabel}</small>
         <span className="uploaded-shot-metrics">
-          <small>OCR {stepLabel(props.shot.ocr_status, `${props.shot.ocr_line_count || rows.length} lines`)}</small>
-          <small>LLM {stepLabel(props.shot.llm_status, "not started")}</small>
+          <small>
+            OCR <span className={`step-status is-${props.shot.ocr_status}`}>{stepLabel(props.shot.ocr_status, `${props.shot.ocr_line_count || rows.length} lines`)}</span>
+          </small>
+          <small>
+            LLM <span className={`step-status is-${props.shot.llm_status}`}>{stepLabel(props.shot.llm_status, "not started")}</span>
+          </small>
           <small>{props.shot.extracted_order_count || 0} rows</small>
         </span>
         {props.shot.processed_at > 0 && amountCheck && (

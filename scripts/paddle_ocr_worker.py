@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run PaddleOCR for one image and print JSON.")
     parser.add_argument("image", nargs="?", help="Image path")
     parser.add_argument("--lang", default="th", help="PaddleOCR language, default th")
+    parser.add_argument("--device", default="gpu", help="PaddleOCR device, for example gpu, gpu:0, or cpu")
     args = parser.parse_args()
 
     if not args.image:
@@ -45,10 +46,12 @@ def main():
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
                 lang=args.lang,
+                device=args.device,
             )
             result = ocr.predict(str(image_path))
         except TypeError:
-            ocr = PaddleOCR(use_angle_cls=True, lang=args.lang)
+            use_gpu = str(args.device).lower().startswith("gpu")
+            ocr = PaddleOCR(use_angle_cls=True, lang=args.lang, use_gpu=use_gpu)
             result = ocr.ocr(str(image_path), cls=True)
         boxes = []
 

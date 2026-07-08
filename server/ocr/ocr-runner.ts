@@ -13,24 +13,29 @@ function paddleLang() {
   return getAppSettings().paddle_lang || "th";
 }
 
+function paddleDevice() {
+  return getAppSettings().paddle_device || "gpu";
+}
+
 function timeoutMs() {
   return Math.max(1000, Number(getAppSettings().paddle_timeout_ms ?? DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
 }
 
 let queue = Promise.resolve();
 
-export function runOcrQueued(screenshot: Screenshot) {
-  const next = queue.then(() => runPaddleOcr(screenshot));
+export function runOcrQueued(screenshot: Screenshot, signal?: AbortSignal) {
+  const next = queue.then(() => runPaddleOcr(screenshot, signal));
   queue = next.then(() => undefined, () => undefined);
   return next;
 }
 
-async function runPaddleOcr(screenshot: Screenshot): Promise<OcrRow[]> {
+async function runPaddleOcr(screenshot: Screenshot, signal?: AbortSignal): Promise<OcrRow[]> {
+  if (signal?.aborted) throw new Error("Processing stopped");
   const imagePath = readStoredImage(screenshot.storage_path);
   const helper = "scripts/paddle_ocr_worker.py";
 
   return await new Promise((resolve, reject) => {
-    const child = spawn(pythonCommand(), [helper, imagePath, "--lang", paddleLang()], {
+    const child = spawn(pythonCommand(), [helper, imagePath, "--lang", paddleLang(), "--device", paddleDevice()], {
       cwd: process.cwd(),
       windowsHide: true,
       env: {
@@ -40,23 +45,40 @@ async function runPaddleOcr(screenshot: Screenshot): Promise<OcrRow[]> {
     });
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = (message = "Processing stopped") => {
+      if (settled) return;
+      settled = true;
       try {
         child.kill();
       } catch {
         // best effort
       }
-      reject(new Error("PaddleOCR timed out"));
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", abortStop);
+      reject(new Error(message));
+    };
+    const abortStop = () => stop();
+    timer = setTimeout(() => {
+      stop("PaddleOCR timed out");
     }, timeoutMs());
+    signal?.addEventListener("abort", abortStop, { once: true });
 
     child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
     child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
     child.on("error", (error) => {
-      clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", abortStop);
       reject(error);
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", abortStop);
       try {
         const payload = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) || "{}");
         if (!payload.ok) throw new Error(payload.error || stderr || `PaddleOCR exited with ${code}`);

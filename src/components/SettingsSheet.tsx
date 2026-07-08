@@ -209,6 +209,13 @@ export function SettingsSheet(props: { onClose: () => void }) {
               <input value={draft.paddle_lang} disabled={!draft.ocr_amount_checker_enabled} onChange={(e) => patch({ paddle_lang: e.target.value })} />
             </div>
             <div className="field">
+              <label>Device</label>
+              <input value={draft.paddle_device} disabled={!draft.ocr_amount_checker_enabled} onChange={(e) => patch({ paddle_device: e.target.value })} />
+            </div>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
               <label>Timeout (ms)</label>
               <input
                 type="number"

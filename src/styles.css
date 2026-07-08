@@ -549,6 +549,33 @@
   padding: 0.12rem 0.45rem;
 }
 
+.step-status {
+  font-weight: var(--weight-bold);
+  font-size: var(--text-xs);
+  display: inline-block;
+  margin-left: 0.15rem;
+}
+
+.step-status.is-done {
+  color: var(--ok);
+}
+
+.step-status.is-running {
+  color: var(--review);
+}
+
+.step-status.is-queued {
+  color: var(--unknown);
+}
+
+.step-status.is-failed {
+  color: var(--danger);
+}
+
+.step-status.is-skipped {
+  color: var(--unknown-soft);
+}
+
 .uploaded-shot-check-row {
   display: flex;
   align-items: center;

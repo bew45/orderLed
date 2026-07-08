@@ -99,6 +99,7 @@ export type AppSettings = {
   openrouter_base_url: string;
   paddle_python: string;
   paddle_lang: string;
+  paddle_device: string;
   paddle_timeout_ms: number;
   ocr_amount_checker_enabled: boolean;
   favorite_models: string[];
@@ -154,6 +155,8 @@ export const endpoints = {
       method: "POST",
       body: JSON.stringify({ force })
     }),
+
+  stopProcessing: () => api<{ stopped: boolean }>("/api/processing/stop", { method: "POST" }),
 
   listOrders: (batchId: string) =>
     api<{ orders: OrderRow[]; summary: BatchSummary }>(`/api/batches/${batchId}/orders`),

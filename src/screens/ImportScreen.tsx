@@ -29,8 +29,9 @@ function countBy<T>(items: T[], pick: (item: T) => string) {
 }
 
 export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () => void; onOpenDashboard: () => void }) {
-  const { activeBatch, summary, screenshots, orders, deleteScreenshot, processActiveBatch, refreshOrders } = useAppData();
+  const { activeBatch, summary, screenshots, orders, deleteScreenshot, processActiveBatch, stopProcessing, refreshOrders } = useAppData();
   const [processing, setProcessing] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [processError, setProcessError] = useState("");
   const [checkTarget, setCheckTarget] = useState<{ screenshotId?: string } | null>(null);
   const [awaitingFirstPoll, setAwaitingFirstPoll] = useState(false);
@@ -56,7 +57,20 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
       setProcessError(err.message || "Failed to read screenshots");
     } finally {
       setProcessing(false);
+      setStopping(false);
       setAwaitingFirstPoll(false);
+    }
+  }
+
+  async function handleStopProcessing() {
+    setStopping(true);
+    setProcessError("");
+    try {
+      const stopped = await stopProcessing();
+      setProcessError(stopped ? "Stopping current read..." : "No active read is running.");
+      await refreshOrders();
+    } catch (err: any) {
+      setProcessError(err.message || "Failed to stop processing");
     }
   }
 
@@ -102,6 +116,7 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
   const canReread = total > 0 && !processing && (processed > 0 || failed > 0 || ordersFound > 0);
   // Show 0% until first poll returns fresh data, then show real progress
   const percent = awaitingFirstPoll ? 0 : total > 0 ? Math.round((processed / total) * 100) : 0;
+  const isStopNotice = /^Stop|^No active/.test(processError);
   const stages: Array<{ label: string; meta: string; state: StageState }> = [
     { label: "Upload", meta: `${total} file${total === 1 ? "" : "s"}`, state: total > 0 ? "done" : "active" },
     {
@@ -167,9 +182,21 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
         <PrimaryButton variant="ghost" disabled={!canReread} onClick={() => handleProcess(true)}>
           Re-read all
         </PrimaryButton>
+        {processing && (
+          <PrimaryButton variant="danger" disabled={stopping} onClick={handleStopProcessing}>
+            {stopping ? "Stopping..." : "Stop all"}
+          </PrimaryButton>
+        )}
       </div>
 
-      {processError && <Alert variant="error" title="Reading failed" message={processError} onDismiss={() => setProcessError("")} />}
+      {processError && (
+        <Alert
+          variant={isStopNotice ? "info" : "error"}
+          title={isStopNotice ? "Read control" : "Reading failed"}
+          message={processError}
+          onDismiss={() => setProcessError("")}
+        />
+      )}
 
       {ordersFound > 0 && (
         <PrimaryButton block onClick={props.onOpenDashboard}>

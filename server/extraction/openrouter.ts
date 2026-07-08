@@ -41,6 +41,7 @@ function extractJson(raw: string) {
 export async function extractWithOpenRouter(input: {
   screenshot: Screenshot;
   sourceAppGuess: SourceApp;
+  signal?: AbortSignal;
 }): Promise<ExtractionResult | null> {
   const key = getAppSettings().openrouter_api_key;
   if (!key) return null;
@@ -85,6 +86,7 @@ export async function extractWithOpenRouter(input: {
 
   const response = await fetch(`${baseUrl()}/chat/completions`, {
     method: "POST",
+    signal: input.signal,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
