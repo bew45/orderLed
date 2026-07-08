@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { fmtMonthLabel, SOURCE_APP_LABEL, type OrderRow } from "../api";
+import { fmtMonthLabel, SOURCE_APP_LABEL, type OrderRow, type ScreenshotRow } from "../api";
 import { CheckFlow } from "../components/CheckFlow";
 import { ScreenshotList } from "../components/ScreenshotList";
 import { Alert, EmptyState, IconCamera, IconChart, IconInbox, PrimaryButton } from "../components/ui";
@@ -28,8 +28,21 @@ function countBy<T>(items: T[], pick: (item: T) => string) {
   return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
+function screenshotCheckFinished(shot: ScreenshotRow) {
+  return ["done", "failed", "skipped"].includes(shot.ocr_status) && shot.llm_status === "done";
+}
+
+function orderScreenshotIds(order: OrderRow) {
+  try {
+    const ids = JSON.parse(order.source_screenshot_ids_json || "[]");
+    return Array.isArray(ids) ? ids.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () => void; onOpenDashboard: () => void }) {
-  const { activeBatch, summary, screenshots, orders, deleteScreenshot, processActiveBatch, stopProcessing, refreshOrders } = useAppData();
+  const { activeBatch, summary, screenshots, orders, deleteScreenshot, processActiveBatch, processScreenshot, stopProcessing, refreshOrders } = useAppData();
   const [processing, setProcessing] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [processError, setProcessError] = useState("");
@@ -74,14 +87,23 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
     }
   }
 
+  const finalizedScreenshotIds = useMemo(
+    () => new Set(screenshots.filter(screenshotCheckFinished).map((shot) => shot.id)),
+    [screenshots]
+  );
+  const finalizedOrders = useMemo(
+    () => orders.filter((order) => orderScreenshotIds(order).some((id) => finalizedScreenshotIds.has(id))),
+    [orders, finalizedScreenshotIds]
+  );
+
   const importStats = useMemo(() => {
-    const months = countBy(orders, orderMonth);
-    const appRows = orders.length > 0
-      ? countBy(orders, (order) => order.source_app)
+    const months = countBy(finalizedOrders, orderMonth);
+    const appRows = finalizedOrders.length > 0
+      ? countBy(finalizedOrders, (order) => order.source_app)
       : countBy(screenshots, (shot) => shot.source_app_guess);
     const ocrLines = screenshots.reduce((sum, shot) => sum + Number(shot.ocr_line_count || 0), 0);
-    const rowsFromShots = screenshots.reduce((sum, shot) => sum + Number(shot.extracted_order_count || 0), 0);
-    const netSpend = orders.reduce((sum, order) => sum + orderAmount(order), 0);
+    const rowsFromShots = screenshots.filter(screenshotCheckFinished).reduce((sum, shot) => sum + Number(shot.extracted_order_count || 0), 0);
+    const netSpend = finalizedOrders.reduce((sum, order) => sum + orderAmount(order), 0);
 
     return {
       months,
@@ -90,7 +112,7 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
       rowsFromShots,
       netSpend
     };
-  }, [orders, screenshots]);
+  }, [finalizedOrders, screenshots]);
 
   if (!activeBatch) {
     return (
@@ -106,11 +128,11 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
     );
   }
 
-  const needsCheckOrders = orders.filter((order) => order.review_state === "needs_check");
+  const needsCheckOrders = finalizedOrders.filter((order) => order.review_state === "needs_check");
   const total = summary?.screenshotsTotal ?? screenshots.length;
   const failed = summary?.screenshotsFailed ?? screenshots.filter((shot) => shot.error).length;
-  const processed = summary?.screenshotsProcessed ?? screenshots.filter((shot) => shot.processed_at > 0).length;
-  const ordersFound = summary?.ordersTotal ?? orders.length;
+  const processed = screenshots.filter(screenshotCheckFinished).length;
+  const ordersFound = finalizedOrders.length;
   const unread = screenshots.filter((shot) => !shot.processed_at && !shot.error).length;
   const canReadNew = total > 0 && !processing && (unread > 0 || failed > 0);
   const canReread = total > 0 && !processing && (processed > 0 || failed > 0 || ordersFound > 0);
@@ -249,9 +271,10 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
           </div>
           <ScreenshotList
             screenshots={screenshots}
-            orders={orders}
+            orders={finalizedOrders}
             onDelete={deleteScreenshot}
             onCheck={(screenshotId) => setCheckTarget({ screenshotId })}
+            onRerun={processScreenshot}
             showOcr
           />
         </section>
@@ -263,6 +286,7 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
           screenshots={screenshots}
           focusScreenshotId={checkTarget.screenshotId}
           onClose={() => setCheckTarget(null)}
+          processScreenshot={processScreenshot}
         />
       )}
     </div>

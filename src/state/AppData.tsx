@@ -23,6 +23,7 @@ type AppDataValue = {
   deleteBatch: (id: string) => Promise<void>;
   uploadFiles: (files: FileList | File[]) => Promise<UploadResult>;
   processActiveBatch: (force?: boolean) => Promise<BatchSummary>;
+  processScreenshot: (screenshotId: string) => Promise<BatchSummary>;
   stopProcessing: () => Promise<boolean>;
   deleteScreenshot: (id: string) => Promise<void>;
   createOrder: (input: Partial<OrderRow> & { source_screenshot_id: string }) => Promise<OrderRow>;
@@ -238,6 +239,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (!activeBatchId) throw new Error("No active import selected");
       const data = await endpoints.processBatch(activeBatchId, force);
       await syncActiveData("process");
+      return data.summary;
+    },
+
+    processScreenshot: async (screenshotId: string) => {
+      const data = await endpoints.processScreenshot(screenshotId);
+      await syncActiveData("process-screenshot");
       return data.summary;
     },
 

@@ -9,7 +9,7 @@ import {
   type ScreenshotRow
 } from "../api";
 import { useAppData } from "../state/AppData";
-import { Alert, IconClose, IconEdit, IconPlus, IconTrash, PrimaryButton } from "./ui";
+import { Alert, IconClose, IconEdit, IconPlus, IconTrash, IconRefresh, PrimaryButton } from "./ui";
 
 type Draft = {
   restaurant_name: string;
@@ -48,7 +48,7 @@ function orderToDraft(order: OrderRow): Draft {
   };
 }
 
-function buildPages(orders: OrderRow[], screenshots: ScreenshotRow[], onlyNeedsCheck: boolean): Page[] {
+function buildPages(orders: OrderRow[], screenshots: ScreenshotRow[], onlyNeedsCheck: boolean, focusScreenshotId?: string): Page[] {
   const byShot = new Map<string, OrderRow[]>();
   for (const order of orders) {
     if (onlyNeedsCheck && order.review_state !== "needs_check") continue;
@@ -59,17 +59,33 @@ function buildPages(orders: OrderRow[], screenshots: ScreenshotRow[], onlyNeedsC
     byShot.set(shotId, list);
   }
   return screenshots
-    .filter((shot) => byShot.has(shot.id))
+    .filter((shot) => {
+      if (byShot.has(shot.id)) return true;
+      if (shot.id === focusScreenshotId) return true;
+      if (onlyNeedsCheck) {
+        const hasIssue = shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable" || shot.error;
+        if (hasIssue) return true;
+      }
+      return false;
+    })
     .map((shot) => ({
       screenshot: shot,
       orders: (byShot.get(shot.id) || []).sort((a, b) => screenOrder(a) - screenOrder(b))
     }));
 }
 
-export function CheckFlow(props: { orders: OrderRow[]; screenshots: ScreenshotRow[]; onClose: () => void; focusScreenshotId?: string }) {
-  const { createOrder, updateOrder, deleteOrder } = useAppData();
+export function CheckFlow(props: {
+  orders: OrderRow[];
+  screenshots: ScreenshotRow[];
+  onClose: () => void;
+  focusScreenshotId?: string;
+  processScreenshot: (id: string) => Promise<any>;
+}) {
+  const { createOrder, updateOrder, deleteOrder, refreshOrders } = useAppData();
   const browseMode = Boolean(props.focusScreenshotId);
-  const [pages, setPages] = useState<Page[]>(() => buildPages(props.orders, props.screenshots, !browseMode));
+  const [pages, setPages] = useState<Page[]>(() =>
+    buildPages(props.orders, props.screenshots, !browseMode, props.focusScreenshotId)
+  );
   const [pageIndex, setPageIndex] = useState(() => {
     if (!props.focusScreenshotId) return 0;
     const idx = pages.findIndex((p) => p.screenshot.id === props.focusScreenshotId);
@@ -82,6 +98,25 @@ export function CheckFlow(props: { orders: OrderRow[]; screenshots: ScreenshotRo
   const [imageOpen, setImageOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Keep pages list updated when props (database entries) change
+  useEffect(() => {
+    setPages(buildPages(props.orders, props.screenshots, !browseMode, props.focusScreenshotId));
+  }, [props.orders, props.screenshots, browseMode, props.focusScreenshotId]);
+
+  async function handleRerunScreenshot() {
+    if (!page) return;
+    setBusy(true);
+    setError("");
+    try {
+      await props.processScreenshot(page.screenshot.id);
+      await refreshOrders();
+    } catch (err: any) {
+      setError(err?.message || "Failed to rerun screenshot processing");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const totalPages = pages.length;
   const page = pages[pageIndex];
@@ -447,6 +482,15 @@ export function CheckFlow(props: { orders: OrderRow[]; screenshots: ScreenshotRo
         <div className="check-flow-actions">
           <div className="check-flow-actions-secondary">
             <button className="check-flow-text-btn" disabled={busy} onClick={goNextPage}>Skip this page</button>
+            <button
+              className="check-flow-text-btn"
+              style={{ marginLeft: "1.5rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+              disabled={busy}
+              onClick={handleRerunScreenshot}
+            >
+              <IconRefresh size={14} className={busy ? "spin" : ""} />
+              <span>{busy ? "Reading..." : "Rerun OCR + LLM"}</span>
+            </button>
           </div>
           <PrimaryButton block disabled={busy || page.orders.length === 0} onClick={handleConfirmAll}>
             {busy ? "Saving..." : `Confirm all ${page.orders.length} correct`}

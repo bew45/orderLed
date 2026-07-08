@@ -1,10 +1,14 @@
 import React, { useMemo, useState } from "react";
 import { endpoints, fmtMoney, parseAmountCheck, SOURCE_APP_LABEL, type AmountCheck, type OcrTextRow, type OrderRow, type ScreenshotRow } from "../api";
-import { Badge, IconEdit, IconTrash, PrimaryButton } from "./ui";
+import { Badge, IconEdit, IconTrash, IconRefresh, PrimaryButton } from "./ui";
+
+function screenshotCheckFinished(shot: ScreenshotRow) {
+  return ["done", "failed", "skipped"].includes(shot.ocr_status) && shot.llm_status === "done";
+}
 
 function issueClass(shot: ScreenshotRow) {
   if (shot.error || shot.ocr_status === "failed" || shot.llm_status === "failed") return "uploaded-shot has-issue is-error";
-  if (shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable") return "uploaded-shot has-issue is-warn";
+  if (screenshotCheckFinished(shot) && (shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable")) return "uploaded-shot has-issue is-warn";
   return "uploaded-shot";
 }
 
@@ -12,8 +16,7 @@ function hasIssue(shot: ScreenshotRow) {
   return Boolean(shot.error)
     || shot.ocr_status === "failed"
     || shot.llm_status === "failed"
-    || shot.amount_check_state === "mismatch"
-    || shot.amount_check_state === "unavailable";
+    || (screenshotCheckFinished(shot) && (shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable"));
 }
 
 function parseOcrRows(value: string): OcrTextRow[] {
@@ -96,6 +99,7 @@ export function ScreenshotList(props: {
   orders?: OrderRow[];
   onDelete?: (id: string) => Promise<void>;
   onCheck?: (id: string) => void;
+  onRerun?: (id: string) => Promise<any>;
   limit?: number;
   showOcr?: boolean;
 }) {
@@ -173,7 +177,8 @@ export function ScreenshotList(props: {
           expanded={props.showOcr ? isExpanded(shot) : true}
           onToggleExpand={props.showOcr ? () => toggleExpanded(shot) : undefined}
           onDelete={props.onDelete ? () => handleDelete(shot.id) : undefined}
-          onCheck={props.onCheck && shot.extracted_order_count > 0 ? () => props.onCheck!(shot.id) : undefined}
+          onCheck={props.onCheck && screenshotCheckFinished(shot) && shot.extracted_order_count > 0 ? () => props.onCheck!(shot.id) : undefined}
+          onRerun={props.onRerun ? () => props.onRerun!(shot.id) : undefined}
         />
       ))}
     </div>
@@ -190,14 +195,17 @@ function ScreenshotCard(props: {
   onToggleExpand?: () => void;
   onDelete?: () => void;
   onCheck?: () => void;
+  onRerun?: () => Promise<void>;
 }) {
+  const [rerunning, setRerunning] = useState(false);
   const rows = useMemo(() => parseOcrRows(props.shot.ocr_text_json), [props.shot.ocr_text_json]);
   const amountCheck = useMemo(() => parseAmountCheck(props.shot.amount_check_json), [props.shot.amount_check_json]);
   const status = shotStatus(props.shot);
   const previewRows = rows.slice(0, 5);
   const appLabel = SOURCE_APP_LABEL[props.shot.source_app_guess] ?? props.shot.source_app_guess ?? "Unknown";
   const expanded = props.expanded ?? true;
-  const hasDetail = Boolean(props.showOcr) && (previewRows.length > 0 || (Boolean(amountCheck) && props.shot.processed_at > 0));
+  const checkFinished = screenshotCheckFinished(props.shot);
+  const hasDetail = Boolean(props.showOcr) && (previewRows.length > 0 || (Boolean(amountCheck) && checkFinished));
   const refundedCount = props.orders.filter((order) => order.status === "refunded").length;
   const cancelledCount = props.orders.filter((order) => order.status === "cancelled").length;
   const needsCheckCount = props.orders.filter((order) => order.review_state === "needs_check").length;
@@ -221,22 +229,22 @@ function ScreenshotCard(props: {
           <small>
             LLM <span className={`step-status is-${props.shot.llm_status}`}>{stepLabel(props.shot.llm_status, "not started")}</span>
           </small>
-          <small>{props.shot.extracted_order_count || 0} rows</small>
+          <small>{checkFinished ? `${props.shot.extracted_order_count || 0} rows` : "checking"}</small>
         </span>
-        {props.shot.processed_at > 0 && amountCheck && (
+        {checkFinished && amountCheck && (
           <span className="uploaded-shot-check-row">
             <Badge status={amountCheck.state} label={amountCheckLabel(amountCheck.state)} />
             <small>{amountCheck.aiAmounts.length} AI / {amountCheck.scannerAmounts.length} OCR</small>
           </span>
         )}
-        {(refundedCount > 0 || cancelledCount > 0 || needsCheckCount > 0) && (
+        {checkFinished && (refundedCount > 0 || cancelledCount > 0 || needsCheckCount > 0) && (
           <span className="uploaded-shot-check-row uploaded-shot-order-flags">
             {refundedCount > 0 && <Badge status="refunded" label={`Refunded ${refundedCount}`} />}
             {cancelledCount > 0 && <Badge status="cancelled" label={`Cancelled ${cancelledCount}`} />}
             {needsCheckCount > 0 && <Badge status="needs_check" label={`Needs check ${needsCheckCount}`} />}
           </span>
         )}
-        {props.shot.processed_at > 0 && engineLabel(props.shot.extraction_engine) && (
+        {checkFinished && engineLabel(props.shot.extraction_engine) && (
           <small className="uploaded-shot-engine">Read with {engineLabel(props.shot.extraction_engine)}</small>
         )}
         {(props.shot.error || props.shot.ocr_error || props.shot.llm_error) && (
@@ -249,8 +257,25 @@ function ScreenshotCard(props: {
           Open
         </a>
         {props.onCheck && (
-          <PrimaryButton className="btn-sm" variant="ghost" onClick={props.onCheck}>
+          <PrimaryButton className="btn-sm" variant="ghost" disabled={rerunning || props.deleting} onClick={props.onCheck}>
             <IconEdit size={13} /> Check
+          </PrimaryButton>
+        )}
+        {props.onRerun && (
+          <PrimaryButton
+            className="btn-sm"
+            variant="ghost"
+            disabled={rerunning || props.deleting}
+            onClick={async () => {
+              setRerunning(true);
+              try {
+                await props.onRerun!();
+              } finally {
+                setRerunning(false);
+              }
+            }}
+          >
+            <IconRefresh size={13} /> {rerunning ? "Reading…" : "Rerun"}
           </PrimaryButton>
         )}
         {hasDetail && (
@@ -270,7 +295,7 @@ function ScreenshotCard(props: {
         )}
       </span>
 
-      {props.showOcr && expanded && amountCheck && props.shot.processed_at > 0 && (
+      {props.showOcr && expanded && amountCheck && checkFinished && (
         <AmountCheckPanel check={amountCheck} />
       )}
 
