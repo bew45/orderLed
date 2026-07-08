@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { fmtMonthLabel, SOURCE_APP_LABEL, type OrderRow } from "../api";
 import { ScreenshotList } from "../components/ScreenshotList";
-import { EmptyState, IconCamera, IconChart, IconInbox, PrimaryButton, ProcessingProgressCard, StatCard } from "../components/ui";
+import { EmptyState, IconCamera, IconChart, IconInbox, PrimaryButton } from "../components/ui";
 import { useAppData } from "../state/AppData";
 
 type StageState = "waiting" | "active" | "done" | "failed";
@@ -79,7 +79,6 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
   const unread = screenshots.filter((shot) => !shot.processed_at && !shot.error).length;
   const canReadNew = total > 0 && !processing && (unread > 0 || failed > 0);
   const canReread = total > 0 && !processing && (processed > 0 || failed > 0 || ordersFound > 0);
-  const readState = processing ? "processing" : failed > 0 ? "failed" : processed > 0 ? "done" : "queued";
   const stages: Array<{ label: string; meta: string; state: StageState }> = [
     { label: "Upload", meta: `${total} file${total === 1 ? "" : "s"}`, state: total > 0 ? "done" : "active" },
     {
@@ -130,15 +129,6 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
         </div>
       </section>
 
-      <ProcessingProgressCard
-        queued={Math.max(0, total - processed - failed)}
-        processed={processed}
-        failed={failed}
-        ordersFound={ordersFound}
-        total={total}
-        state={readState}
-      />
-
       <div className="btn-row import-action-row">
         <PrimaryButton disabled={!canReadNew} onClick={() => handleProcess(false)}>
           {processing ? "Reading..." : failed > 0 && unread === 0 ? "Retry failed" : unread > 0 ? `Read ${unread} new` : "Read screenshots"}
@@ -154,14 +144,7 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
         </PrimaryButton>
       )}
 
-      <section className="import-summary-grid">
-        <StatCard label="Images" value={String(total)} />
-        <StatCard label="OCR lines" value={String(importStats.ocrLines)} />
-        <StatCard label="Rows" value={String(ordersFound || importStats.rowsFromShots)} />
-        <StatCard label="Months" value={String(importStats.months.length)} />
-      </section>
-
-      {(importStats.months.length > 0 || importStats.appRows.length > 0) && (
+      {ordersFound > 0 && (
         <section className="dashboard-section">
           <div className="dashboard-section-head">
             <h3>Batch summary</h3>
@@ -170,11 +153,11 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
           <div className="import-summary-lines">
             <div className="import-summary-line">
               <span>Detected months</span>
-              <strong>{importStats.months.length > 0 ? importStats.months.map(([month]) => monthLabel(month)).join(", ") : "Waiting for read"}</strong>
+              <strong>{importStats.months.map(([month]) => monthLabel(month)).join(", ")}</strong>
             </div>
             <div className="import-summary-line">
               <span>Apps</span>
-              <strong>{importStats.appRows.length > 0 ? importStats.appRows.map(([app, count]) => `${SOURCE_APP_LABEL[app] ?? app} ${count}`).join(" / ") : "Waiting for read"}</strong>
+              <strong>{importStats.appRows.map(([app, count]) => `${SOURCE_APP_LABEL[app] ?? app} ${count}`).join(" / ")}</strong>
             </div>
             <div className="import-summary-line">
               <span>Net amount</span>

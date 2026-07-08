@@ -194,58 +194,6 @@ export function EmptyState(props: { icon?: React.ReactNode; title: string; body:
   );
 }
 
-export type ProcessingState = "queued" | "processing" | "done" | "failed";
-
-export function ProcessingProgressCard(props: {
-  queued: number;
-  processed: number;
-  failed: number;
-  ordersFound: number;
-  total: number;
-  state: ProcessingState;
-}) {
-  const pct = props.total > 0 ? Math.min(100, Math.round((props.processed / props.total) * 100)) : 0;
-  const stateLabel: Record<ProcessingState, string> = {
-    queued: "Queued",
-    processing: "Processing",
-    done: "Done",
-    failed: "Attention needed"
-  };
-  const failed = props.state === "failed";
-  return (
-    <div className="card">
-      <div className="progress-card-head">
-        <span className="progress-card-title">Reading screenshots</span>
-        <span className={failed ? "progress-card-state is-failed" : "progress-card-state"}>
-          {props.state === "processing" && <span className="progress-state-dot" />}
-          {stateLabel[props.state]}
-        </span>
-      </div>
-      <div className="progress-track">
-        <div className={failed ? "progress-track-fill is-failed" : "progress-track-fill"} style={{ width: `${pct}%` }} />
-      </div>
-      <div className="progress-stats">
-        <div className="progress-stat">
-          <div className="progress-stat-value tabular">{props.queued}</div>
-          <div className="progress-stat-label">Queued</div>
-        </div>
-        <div className="progress-stat">
-          <div className="progress-stat-value tabular">{props.processed}</div>
-          <div className="progress-stat-label">Processed</div>
-        </div>
-        <div className="progress-stat progress-stat--failed">
-          <div className="progress-stat-value tabular">{props.failed}</div>
-          <div className="progress-stat-label">Failed</div>
-        </div>
-        <div className="progress-stat progress-stat--found">
-          <div className="progress-stat-value tabular">{props.ordersFound}</div>
-          <div className="progress-stat-label">Found</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export type TabKey = "import" | "home" | "batches" | "export";
 
 export function TabBar(props: { active: TabKey; attentionCount?: number; onSelect: (tab: TabKey) => void }) {

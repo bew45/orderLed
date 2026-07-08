@@ -13,7 +13,8 @@ export default defineConfig({
     },
     watch: {
       usePolling: true,
-      interval: 300
+      interval: 1000,
+      ignored: ["**/data/**", "**/.venv-ocr/**", "**/orderledger-kit/**", "**/.logs/**", "**/dist-server/**"]
     },
     proxy: {
       "/api": "http://127.0.0.1:8788"

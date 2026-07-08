@@ -622,98 +622,6 @@
   background: var(--surface);
 }
 
-/* ---------- Processing progress card ---------- */
-
-.progress-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
-
-.progress-card-title {
-  font-size: var(--text-body);
-  font-weight: var(--weight-semibold);
-}
-
-.progress-card-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--brand);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.progress-card-state.is-failed {
-  color: var(--danger);
-}
-
-.progress-state-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: progress-pulse 1.3s ease-in-out infinite;
-}
-
-@keyframes progress-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.75); }
-}
-
-.progress-track {
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-sunken);
-  overflow: hidden;
-  margin-bottom: 0.9rem;
-}
-
-.progress-track-fill {
-  height: 100%;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--brand), #3d7c67);
-  transition: width 220ms ease;
-}
-
-.progress-track-fill.is-failed {
-  background: var(--danger);
-}
-
-.progress-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.5rem;
-}
-
-.progress-stat {
-  text-align: center;
-  padding: 0.5rem 0.2rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-}
-
-.progress-stat-value {
-  font-size: 1.05rem;
-  font-weight: var(--weight-bold);
-  line-height: 1.1;
-}
-
-.progress-stat-label {
-  font-size: 10px;
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  margin-top: 2px;
-}
-
-.progress-stat--failed .progress-stat-value { color: var(--danger); }
-.progress-stat--found .progress-stat-value { color: var(--brand); }
-
 /* ---------- Order row (review list) ---------- */
 
 .order-row {
@@ -1053,6 +961,7 @@
 .model-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;
+  min-height: 56px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface);

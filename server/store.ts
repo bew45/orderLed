@@ -56,6 +56,7 @@ export function addScreenshot(input: {
     ocr_text_json: "[]",
     ocr_line_count: 0,
     extracted_order_count: 0,
+    extraction_engine: "",
     processed_at: 0,
     error: "",
     created_at: ts,
@@ -63,8 +64,8 @@ export function addScreenshot(input: {
   };
   db.prepare(`
     INSERT INTO screenshots
-      (id, batch_id, original_name, storage_path, content_hash, source_app_guess, width, height, ocr_text_json, ocr_line_count, extracted_order_count, processed_at, error, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, batch_id, original_name, storage_path, content_hash, source_app_guess, width, height, ocr_text_json, ocr_line_count, extracted_order_count, extraction_engine, processed_at, error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     screenshot.id,
     screenshot.batch_id,
@@ -77,6 +78,7 @@ export function addScreenshot(input: {
     screenshot.ocr_text_json,
     screenshot.ocr_line_count,
     screenshot.extracted_order_count,
+    screenshot.extraction_engine,
     screenshot.processed_at,
     screenshot.error,
     screenshot.created_at,
@@ -147,6 +149,7 @@ export function markScreenshotProcessed(id: string, input: {
   ocrRows?: OcrRow[];
   sourceAppGuess?: SourceApp;
   extractedOrderCount?: number;
+  extractionEngine?: string;
 } = {}) {
   const ts = now();
   const error = input.error ?? "";
@@ -157,6 +160,7 @@ export function markScreenshotProcessed(id: string, input: {
       ocr_text_json=?,
       ocr_line_count=?,
       extracted_order_count=?,
+      extraction_engine=?,
       processed_at=?,
       error=?,
       updated_at=?
@@ -166,6 +170,7 @@ export function markScreenshotProcessed(id: string, input: {
     json(input.ocrRows ?? parseJson<OcrRow[]>(current?.ocr_text_json, [])),
     input.ocrRows?.length ?? current?.ocr_line_count ?? 0,
     input.extractedOrderCount ?? current?.extracted_order_count ?? 0,
+    input.extractionEngine ?? current?.extraction_engine ?? "",
     error ? 0 : ts,
     error,
     ts,
@@ -292,6 +297,10 @@ export function listOrders(batchId: string) {
   return db.prepare("SELECT * FROM orders WHERE batch_id=? ORDER BY ordered_at DESC, restaurant_name").all(batchId) as OrderRow[];
 }
 
+export function listAllOrders() {
+  return db.prepare("SELECT * FROM orders ORDER BY ordered_at DESC, restaurant_name").all() as OrderRow[];
+}
+
 export function updateOrder(id: string, patch: Partial<OrderRow>) {
   const current = getOrder(id);
   if (!current) return null;
@@ -374,7 +383,7 @@ export function getAppSettings(): AppSettings {
   const saved = parseJson<Partial<AppSettings>>(settingsRow?.value_json, {});
   return {
     openrouter_api_key: nonEmpty(saved.openrouter_api_key, process.env.OPENROUTER_API_KEY),
-    openrouter_model: nonEmpty(saved.openrouter_model, process.env.OPENROUTER_MODEL, "google/gemini-2.0-flash-001"),
+    openrouter_model: nonEmpty(saved.openrouter_model, process.env.OPENROUTER_MODEL, "google/gemini-2.5-flash-lite"),
     openrouter_base_url: nonEmpty(saved.openrouter_base_url, process.env.OPENROUTER_BASE_URL, "https://openrouter.ai/api/v1"),
     paddle_python: nonEmpty(saved.paddle_python, process.env.ORDERLEDGER_PADDLE_PYTHON),
     paddle_lang: nonEmpty(saved.paddle_lang, process.env.ORDERLEDGER_PADDLE_LANG, "th"),

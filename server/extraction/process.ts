@@ -2,7 +2,7 @@ import { extractWithHeuristics } from "./heuristics";
 import { extractWithOpenRouter } from "./openrouter";
 import { guessSourceAppFromText, normalizeExtractedOrder, evidenceFromIds } from "../normalize";
 import { runOcrQueued } from "../ocr/ocr-runner";
-import { clearScreenshotExtraction, getBatch, getBatchSummary, listScreenshots, markScreenshotProcessed, upsertOrder } from "../store";
+import { clearScreenshotExtraction, getAppSettings, getBatch, getBatchSummary, listScreenshots, markScreenshotProcessed, upsertOrder } from "../store";
 import type { OcrRow } from "../types";
 
 export async function processBatch(batchId: string, opts: { force?: boolean } = {}) {
@@ -26,6 +26,7 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
       const llmResult = await extractWithOpenRouter({ screenshot, ocrRows: rows, sourceAppGuess });
       if (!llmResult && ocrError) throw new Error(`${ocrError}. Add OPENROUTER_API_KEY to use vision extraction without OCR.`);
       const result = llmResult ?? extractWithHeuristics(rows, sourceAppGuess);
+      const extractionEngine = llmResult ? `openrouter:${getAppSettings().openrouter_model}` : "heuristics";
       let extractedOrderCount = 0;
 
       for (const order of result.orders) {
@@ -58,7 +59,8 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
         error: ocrError && !llmResult ? ocrError : "",
         ocrRows: rows,
         sourceAppGuess,
-        extractedOrderCount
+        extractedOrderCount,
+        extractionEngine
       });
     } catch (error: any) {
       markScreenshotProcessed(screenshot.id, { error: error?.message || "Processing failed" });

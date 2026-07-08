@@ -64,19 +64,19 @@ function aggregate(orders: OrderRow[], pick: (order: OrderRow) => { key: string;
 }
 
 export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () => void }) {
-  const { activeBatch, summary, orders } = useAppData();
+  const { batches, allOrders } = useAppData();
   const [selectedMonth, setSelectedMonth] = useState("all");
 
   const dashboard = useMemo(() => {
-    const isMonthlyTotalBatch = orders.length > 0 && orders.every(isMonthlyTotalSnapshot);
-    const monthly = aggregate(orders, (order) => {
+    const isMonthlyTotalBatch = allOrders.length > 0 && allOrders.every(isMonthlyTotalSnapshot);
+    const monthly = aggregate(allOrders, (order) => {
       const month = orderMonth(order);
       return { key: month, label: monthLabel(month) };
     }).sort((a, b) => a.key.localeCompare(b.key));
     const months = monthly.map((row) => row.key);
     const filteredOrders = selectedMonth === "all"
-      ? orders
-      : orders.filter((order) => orderMonth(order) === selectedMonth);
+      ? allOrders
+      : allOrders.filter((order) => orderMonth(order) === selectedMonth);
     const totals = summarizeOrders(filteredOrders);
 
     return {
@@ -103,9 +103,9 @@ export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () 
         return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
       })
     };
-  }, [orders, selectedMonth]);
+  }, [allOrders, selectedMonth]);
 
-  if (!activeBatch) {
+  if (batches.length === 0) {
     return (
       <div className="screen">
         <EmptyState
@@ -119,8 +119,7 @@ export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () 
     );
   }
 
-  const hasScreenshots = (summary?.screenshotsTotal ?? 0) > 0;
-  const hasOrders = orders.length > 0;
+  const hasOrders = allOrders.length > 0;
   const currentLabel = selectedMonth === "all" ? "All detected months" : monthLabel(selectedMonth);
   const rowLabel = dashboard.isMonthlyTotalBatch ? "monthly total" : "order";
   const rowLabelPlural = dashboard.isMonthlyTotalBatch ? "monthly totals" : "orders";
@@ -129,7 +128,8 @@ export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () 
     <div className="screen">
       <div>
         <p className="eyebrow">Dashboard</p>
-        <h2 className="screen-title">{activeBatch.title}</h2>
+        <h2 className="screen-title">All imports</h2>
+        <p className="screen-subtitle">{batches.length} import{batches.length === 1 ? "" : "s"} combined into one running history.</p>
       </div>
 
       <section className="dashboard-hero">
@@ -151,9 +151,9 @@ export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () 
       <div className="home-status-line">
         {dashboard.isMonthlyTotalBatch
           ? "Legacy monthly totals imported as summary rows. New screenshot imports will still extract restaurant-level orders."
-          : hasScreenshots
-          ? `Import: ${summary?.screenshotsTotal} screenshots / ${summary?.screenshotsProcessed} processed / ${summary?.screenshotsFailed} failed`
-          : "No screenshots uploaded yet for this import."}
+          : hasOrders
+          ? `${dashboard.totals.ordersTotal} rows across ${batches.length} import${batches.length === 1 ? "" : "s"}.`
+          : "No orders extracted yet. Upload screenshots in Import to get started."}
       </div>
 
       {!hasOrders ? (

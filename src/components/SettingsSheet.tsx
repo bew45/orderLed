@@ -131,7 +131,7 @@ export function SettingsSheet(props: { onClose: () => void }) {
           <div className="settings-section-head">
             <div>
               <h3>Model library</h3>
-              <p>Pick a model and star favorites for quick reuse.</p>
+              <p>Vision-capable models only. Pick one and star favorites for quick reuse.</p>
             </div>
             <span>{loadingModels ? "loading" : `${models.length} models`}</span>
           </div>

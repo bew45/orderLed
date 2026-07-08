@@ -193,3 +193,5 @@ Manual smoke:
 7. confirm OCR lines and batch summary appear
 8. open Dashboard and confirm summary updates
 9. export `.xls`, `.csv`, `.pdf`
+
+Note (verified 2026-07-08): step 6/7 currently fail on this machine without an `OPENROUTER_API_KEY`. Local PaddleOCR errors with a Paddle runtime bug (`ConvertPirAttribute2RuntimeAttribute not support ...`), and no OpenRouter key is configured, so `processBatch` throws instead of producing rows. Set `OPENROUTER_API_KEY` in Settings or `.env` to actually exercise steps 6-9 end-to-end.

@@ -49,6 +49,7 @@ export type ScreenshotRow = {
   ocr_text_json: string;
   ocr_line_count: number;
   extracted_order_count: number;
+  extraction_engine: string;
   processed_at: number;
   error: string;
   created_at: number;
@@ -121,6 +122,8 @@ export const endpoints = {
 
   listOrders: (batchId: string) =>
     api<{ orders: OrderRow[]; summary: BatchSummary }>(`/api/batches/${batchId}/orders`),
+
+  listAllOrders: () => api<{ orders: OrderRow[] }>("/api/orders"),
 
   listScreenshots: (batchId: string) =>
     api<{ screenshots: ScreenshotRow[]; summary: BatchSummary }>(`/api/batches/${batchId}/screenshots`),

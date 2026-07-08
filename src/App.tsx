@@ -10,7 +10,7 @@ import { CreateBatchSheet } from "./components/CreateBatchSheet";
 import { Alert, IconGear, TabBar, type TabKey } from "./components/ui";
 
 function Shell() {
-  const { summary, error, clearError, loading } = useAppData();
+  const { allOrders, error, clearError, loading } = useAppData();
   const [tab, setTab] = useState<TabKey>("import");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -62,7 +62,7 @@ function Shell() {
       )}
       {tab === "export" && <ExportScreen />}
 
-      <TabBar active={tab} attentionCount={summary?.ordersNeedingReview ?? 0} onSelect={setTab} />
+      <TabBar active={tab} attentionCount={allOrders.filter((order) => order.review_state === "needs_review").length} onSelect={setTab} />
 
       {uploadOpen && (
         <UploadFlow

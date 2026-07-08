@@ -102,3 +102,4 @@ function addColumnIfMissing(table: string, column: string, definition: string) {
 addColumnIfMissing("screenshots", "ocr_text_json", "TEXT NOT NULL DEFAULT '[]'");
 addColumnIfMissing("screenshots", "ocr_line_count", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("screenshots", "extracted_order_count", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("screenshots", "extraction_engine", "TEXT NOT NULL DEFAULT ''");

@@ -17,6 +17,13 @@ function shotStatus(shot: ScreenshotRow) {
   return { label: "Uploaded", badge: "unknown" };
 }
 
+function engineLabel(engine: string) {
+  if (!engine) return "";
+  if (engine.startsWith("openrouter:")) return `OpenRouter · ${engine.slice("openrouter:".length)}`;
+  if (engine === "heuristics") return "OCR heuristics";
+  return engine;
+}
+
 export function ScreenshotList(props: {
   screenshots: ScreenshotRow[];
   onDelete?: (id: string) => Promise<void>;
@@ -90,6 +97,9 @@ function ScreenshotCard(props: {
           <small>{props.shot.ocr_line_count || rows.length} OCR lines</small>
           <small>{props.shot.extracted_order_count || 0} rows</small>
         </span>
+        {props.shot.processed_at > 0 && engineLabel(props.shot.extraction_engine) && (
+          <small className="uploaded-shot-engine">Read with {engineLabel(props.shot.extraction_engine)}</small>
+        )}
         {props.shot.error && <small className="uploaded-shot-error">{props.shot.error}</small>}
       </span>
 
@@ -109,24 +119,20 @@ function ScreenshotCard(props: {
         )}
       </span>
 
-      {props.showOcr && (rows.length > 0 || props.shot.processed_at > 0 || props.shot.error) && (
+      {props.showOcr && previewRows.length > 0 && (
         <div className="uploaded-shot-ocr">
           <div className="uploaded-shot-ocr-head">
             <span>OCR result</span>
             <span>{rows.length} lines</span>
           </div>
-          {previewRows.length > 0 ? (
-            <div className="ocr-line-list">
-              {previewRows.map((row, index) => (
-                <div className="ocr-line-row" key={row.id || `${props.shot.id}-${index}`}>
-                  <span className="ocr-line-index tabular">{index + 1}</span>
-                  <span>{row.text}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="ocr-empty">No OCR text stored for this screenshot.</p>
-          )}
+          <div className="ocr-line-list">
+            {previewRows.map((row, index) => (
+              <div className="ocr-line-row" key={row.id || `${props.shot.id}-${index}`}>
+                <span className="ocr-line-index tabular">{index + 1}</span>
+                <span>{row.text}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </article>

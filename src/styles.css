@@ -126,21 +126,6 @@
   min-height: 46px;
 }
 
-.import-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.5rem;
-}
-
-.import-summary-grid .stat-card {
-  min-width: 0;
-  padding: 0.7rem 0.55rem 0.7rem 0.8rem;
-}
-
-.import-summary-grid .stat-value {
-  font-size: 1.05rem;
-}
-
 .import-summary-lines {
   display: grid;
   gap: 0.5rem;
@@ -605,8 +590,7 @@
     font-size: 1.45rem;
   }
 
-  .import-stage-list,
-  .import-summary-grid {
+  .import-stage-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

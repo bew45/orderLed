@@ -14,7 +14,7 @@ function baseUrl() {
 }
 
 function model() {
-  return getAppSettings().openrouter_model || "google/gemini-2.0-flash-001";
+  return getAppSettings().openrouter_model || "google/gemini-2.5-flash-lite";
 }
 
 function imageDataUrl(screenshot: Screenshot) {

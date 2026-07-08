@@ -370,12 +370,12 @@ Settings fields:
 ```json
 {
   "openrouter_api_key": "masked on read when present",
-  "openrouter_model": "google/gemini-2.0-flash-001",
+  "openrouter_model": "google/gemini-2.5-flash-lite",
   "openrouter_base_url": "https://openrouter.ai/api/v1",
   "paddle_python": ".venv-ocr\\Scripts\\python.exe",
   "paddle_lang": "th",
   "paddle_timeout_ms": 90000,
-  "favorite_models": ["google/gemini-2.0-flash-001"]
+  "favorite_models": ["google/gemini-2.5-flash-lite"]
 }
 ```
 
@@ -456,7 +456,7 @@ Recommended for accurate extraction:
 
 ```env
 OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=google/gemini-2.0-flash-001
+OPENROUTER_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 

@@ -135,6 +135,13 @@ When committing in a dirty tree:
 - do not include unrelated design or generated changes
 - do not remove data, uploads, exports, or environment files
 
+## Known Issues (verified 2026-07-08)
+
+- Local PaddleOCR currently fails on real screenshots on this Windows setup with `(Unimplemented) ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`. This is a Paddle runtime bug, not an app bug.
+- `.env` and saved app settings both have `OPENROUTER_API_KEY` empty, so the OpenRouter fallback in `server/extraction/openrouter.ts` returns `null` and `processBatch` throws for every new screenshot (`server/extraction/process.ts:27`).
+- Net effect: `Read screenshots` does not currently produce order rows for any newly uploaded screenshot. The 10 orders in the local DB all come from `npm run legacy:import-monthly`, not from extraction.
+- Do not assume extraction "just works" when testing changes in this environment — configure `OPENROUTER_API_KEY` first, or fix the Paddle install, before relying on `Read screenshots` to verify a change.
+
 ## Start Here
 
 Read `PROJECT_INDEX.md` after this file for the map of files, routes, and data flow.

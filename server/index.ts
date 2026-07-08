@@ -18,6 +18,7 @@ import {
   getBatchSummary,
   getScreenshot,
   getAppSettings,
+  listAllOrders,
   listBatches,
   listOrders,
   listScreenshots,
@@ -84,12 +85,15 @@ app.get("/api/settings/openrouter-models", async (_req, res) => {
     if (!response.ok) throw new Error(`Model list failed (${response.status})`);
     const payload = await response.json() as any;
     const models = Array.isArray(payload?.data)
-      ? payload.data.map((item: any) => ({
-          id: String(item.id ?? ""),
-          name: String(item.name ?? item.id ?? ""),
-          context_length: Number(item.context_length ?? 0) || 0,
-          pricing: item.pricing ?? {}
-        })).filter((item: any) => item.id)
+      ? payload.data
+          .filter((item: any) => Array.isArray(item.architecture?.input_modalities) && item.architecture.input_modalities.includes("image"))
+          .map((item: any) => ({
+            id: String(item.id ?? ""),
+            name: String(item.name ?? item.id ?? ""),
+            context_length: Number(item.context_length ?? 0) || 0,
+            pricing: item.pricing ?? {}
+          }))
+          .filter((item: any) => item.id)
       : [];
     res.json({ models });
   } catch (error: any) {
@@ -207,6 +211,14 @@ app.post("/api/batches/:id/process", async (req, res) => {
     res.json({ summary: await processBatch(req.params.id, { force: Boolean(req.body?.force) }) });
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+app.get("/api/orders", (_req, res) => {
+  try {
+    res.json({ orders: listAllOrders() });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -9,6 +9,7 @@ type AppDataValue = {
   activeBatchId: string;
   activeBatch: BatchListItem | undefined;
   orders: OrderRow[];
+  allOrders: OrderRow[];
   screenshots: ScreenshotRow[];
   summary: BatchSummary | null;
   settings: AppSettings | null;
@@ -49,6 +50,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [batches, setBatches] = useState<BatchListItem[]>([]);
   const [activeBatchId, setActiveBatchId] = useState(readStoredActiveBatchId);
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [allOrders, setAllOrders] = useState<OrderRow[]>([]);
   const [screenshots, setScreenshots] = useState<ScreenshotRow[]>([]);
   const [summary, setSummary] = useState<BatchSummary | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -96,8 +98,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     syncInFlightRef.current = true;
     try {
-      const data = await endpoints.listBatches();
+      const [data, allOrdersData] = await Promise.all([endpoints.listBatches(), endpoints.listAllOrders()]);
       setBatches(data.batches);
+      setAllOrders(allOrdersData.orders);
 
       const currentActiveId = activeBatchIdRef.current;
       const nextActiveId = currentActiveId && data.batches.some((batch) => batch.id === currentActiveId)
@@ -189,6 +192,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     activeBatchId,
     activeBatch: batches.find((batch) => batch.id === activeBatchId),
     orders,
+    allOrders,
     screenshots,
     summary,
     settings,

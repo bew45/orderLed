@@ -36,6 +36,7 @@ export type Screenshot = {
   ocr_text_json: string;
   ocr_line_count: number;
   extracted_order_count: number;
+  extraction_engine: string;
   processed_at: number;
   error: string;
   created_at: number;
