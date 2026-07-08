@@ -263,8 +263,9 @@ function ScreenshotCard(props: {
         )}
         {props.onRerun && (
           <PrimaryButton
-            className="btn-sm"
+            className="btn-sm btn-icon-only"
             variant="ghost"
+            title={rerunning ? "Reading…" : "Rerun OCR + LLM"}
             disabled={rerunning || props.deleting}
             onClick={async () => {
               setRerunning(true);
@@ -275,7 +276,7 @@ function ScreenshotCard(props: {
               }
             }}
           >
-            <IconRefresh size={13} /> {rerunning ? "Reading…" : "Rerun"}
+            <IconRefresh size={14} className={rerunning ? "spin" : ""} />
           </PrimaryButton>
         )}
         {hasDetail && (
@@ -285,12 +286,16 @@ function ScreenshotCard(props: {
         )}
         {props.onDelete && (
           <PrimaryButton
-            className="btn-sm"
+            className={props.confirmDelete || props.deleting ? "btn-sm" : "btn-sm btn-icon-only"}
             variant={props.confirmDelete ? "danger" : "ghost"}
+            title={props.deleting ? "Deleting…" : props.confirmDelete ? "Confirm delete" : "Delete"}
             disabled={props.deleting}
             onClick={props.onDelete}
           >
-            <IconTrash size={13} /> {props.deleting ? "Deleting" : props.confirmDelete ? "Confirm" : "Delete"}
+            <IconTrash size={13} />
+            {(props.confirmDelete || props.deleting) && (
+              <span>{props.deleting ? "Deleting…" : "Confirm?"}</span>
+            )}
           </PrimaryButton>
         )}
       </span>

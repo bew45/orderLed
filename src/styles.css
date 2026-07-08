@@ -603,6 +603,14 @@
   min-height: 30px;
 }
 
+/* Square icon-only button: no label text, fixed size */
+.btn-icon-only {
+  width: 30px;
+  padding-left: 0;
+  padding-right: 0;
+  justify-content: center;
+}
+
 .uploaded-shot-status {
   flex: none;
   display: inline-flex;
