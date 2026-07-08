@@ -33,11 +33,11 @@ OpenRouter is optional but recommended. Add `OPENROUTER_API_KEY` and `OPENROUTER
 - Create import sessions
 - Upload many screenshots
 - Inspect uploaded file list before reading
-- Run OCR + extraction
-- See OCR text and batch summary in the Import workspace
+- Run OpenRouter order extraction and OCR amount checking
+- See OCR text, scanned amounts, and verification check states in the Import workspace
 - Merge duplicate visible order cards
 - Open Dashboard after processing
-- Optionally check/edit suspicious rows
+- Optionally check mismatch or unavailable order rows
 - Export Excel, CSV, and PDF
 
 ## Current Status (checked against code + local data, 2026-07-08)
@@ -51,7 +51,7 @@ Working end-to-end today:
 
 Not working out of the box:
 
-- **Reading real screenshots currently fails.** Local PaddleOCR hits a Windows/Paddle runtime bug (`ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`), and `OPENROUTER_API_KEY` is unset in both `.env` and saved Settings, so the OpenRouter vision fallback has nothing to fall back to. `Read screenshots` errors out for any new upload until one of the two extraction paths is fixed/configured.
+- **Reading real screenshots currently fails.** Local PaddleOCR hits a Windows/Paddle runtime bug (`ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`), and `OPENROUTER_API_KEY` is unset in both `.env` and saved Settings, so OpenRouter vision extraction has no key to run. `Read screenshots` errors out for any new upload until one of the two extraction paths is fixed/configured.
 - The orders visible in Dashboard right now all come from `npm run legacy:import-monthly` (a one-off script that inserts monthly totals directly into the DB), not from screenshot extraction. No screenshot has ever produced a real order row in this environment.
 
 To unblock extraction, set `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`) via Settings or `.env` — this bypasses the broken local OCR path entirely since OpenRouter reads the image directly.

@@ -16,8 +16,8 @@ flowchart TD
   B --> C["Store images and skip duplicates"]
   C --> D["Show uploaded file list in Import workspace"]
   D --> E["User taps Read screenshots"]
-  E --> F["Run OCR and/or OpenRouter vision extraction"]
-  F --> G["Show OCR lines and batch summary"]
+  E --> F["Run OCR amount check + OpenRouter vision order extraction"]
+  F --> G["Show OCR text and batch summary"]
   G --> H["Open Dashboard summary"]
   H --> I["Export Excel / CSV / PDF"]
   H --> J["Optional check/correct suspicious rows"]
@@ -44,14 +44,12 @@ Main point: upload should show the file list first; Read is the explicit extract
 - `src/screens/UploadFlow.tsx` - screenshot picker/upload sheet only; it does not run OCR.
 - `src/screens/BatchesScreen.tsx` - import history and active import selection.
 - `src/screens/ExportScreen.tsx` - export actions and export warnings.
-- `src/screens/ReviewScreen.tsx` - optional correction/debug surface. Not canonical navigation.
 
 ### Components
 
 - `src/components/ui.tsx` - local icons and shared primitives: buttons, badges, alerts, tab bar, bottom sheet.
 - `src/components/SettingsSheet.tsx` - OpenRouter/OCR settings and model picker.
 - `src/components/CreateBatchSheet.tsx` - import creation.
-- `src/components/OrderSheet.tsx` - optional order correction sheet.
 
 ### Backend
 
@@ -68,7 +66,6 @@ Main point: upload should show the file list first; Read is the explicit extract
 
 - `server/extraction/process.ts` - batch processing orchestrator.
 - `server/extraction/openrouter.ts` - OpenRouter extraction path.
-- `server/extraction/heuristics.ts` - fallback extraction path from OCR rows.
 - `server/ocr/ocr-runner.ts` - PaddleOCR process runner and queue.
 - `scripts/paddle_ocr_worker.py` - Python OCR worker.
 - `scripts/setup-ocr.ps1` - Windows OCR environment setup.
@@ -103,8 +100,8 @@ Base backend: `http://127.0.0.1:8788`
 4. Duplicate screenshots are skipped by content hash.
 5. `ImportScreen` shows uploaded screenshots immediately, including delete actions.
 6. User taps Read; `ImportScreen` calls `processActiveBatch(false)` for unread screenshots or `processActiveBatch(true)` for re-read all.
-7. `server/extraction/process.ts` clears stale rows for each screenshot, runs OCR, OpenRouter extraction if configured, or heuristic fallback.
-8. OCR rows are stored on the screenshot record for debugging and import confidence.
+7. `server/extraction/process.ts` clears stale rows for each screenshot, runs OCR amount scanning, and runs OpenRouter order extraction.
+8. OCR rows and compared amount check results are stored on the screenshot record.
 9. `normalizeExtractedOrder` produces canonical order fields.
 10. `upsertOrder` stores rows and merges duplicates by duplicate key.
 11. `getBatchSummary` returns counts and spend totals.
@@ -135,7 +132,6 @@ Important frontend order fields:
 - `refund_amount`
 - `net_amount`
 - `items_text`
-- `confidence`
 - `review_state`
 - `evidence_json`
 
@@ -169,7 +165,7 @@ Avoid as primary flow copy:
 ## Known Direction / Next Work
 
 - Make upload-to-summary feel instant and automatic.
-- Improve extraction confidence and duplicate merging.
+- Improve extraction accuracy and duplicate merging.
 - Add dashboard analytics later: spend by app, spend by restaurant, weekday/time patterns, monthly trends.
 - Keep export available early.
 - Keep correction tools available but not central.

@@ -78,7 +78,7 @@ export function SettingsSheet(props: { onClose: () => void }) {
   return (
     <BottomSheet
       title="Extraction setup"
-      subtitle="Tune the vision model and optional local OCR fallback."
+      subtitle="Tune the vision model and local OCR amount checker."
       onClose={props.onClose}
       footer={
         <>
@@ -97,7 +97,7 @@ export function SettingsSheet(props: { onClose: () => void }) {
             {keyReady ? "Vision extraction ready" : "API key needed"}
           </span>
           <strong>{selectedModel?.name || draft.openrouter_model || "No model selected"}</strong>
-          <p>OpenRouter vision is the accurate path for Grab, LINE MAN, and ShopeeFood screenshots. Local OCR can help as a fallback.</p>
+          <p>OpenRouter vision is the accurate path for Grab, LINE MAN, and ShopeeFood screenshots. Local OCR is used to compare and check amounts.</p>
         </section>
 
         <section className="settings-section-card">
@@ -176,8 +176,8 @@ export function SettingsSheet(props: { onClose: () => void }) {
         <section className="settings-section-card">
           <div className="settings-section-head">
             <div>
-              <h3>Local OCR fallback</h3>
-              <p>Optional PaddleOCR setup. Vision extraction can still run without it.</p>
+              <h3>Local OCR amount checker</h3>
+              <p>OCR scans visible amounts so OrderLedger can compare them with the AI extracted orders.</p>
             </div>
           </div>
 

@@ -41,7 +41,6 @@ function shotStatus(shot: ScreenshotRow) {
 function engineLabel(engine: string) {
   if (!engine) return "";
   if (engine.startsWith("openrouter:")) return `OpenRouter · ${engine.slice("openrouter:".length)}`;
-  if (engine === "heuristics") return "OCR heuristics";
   return engine;
 }
 

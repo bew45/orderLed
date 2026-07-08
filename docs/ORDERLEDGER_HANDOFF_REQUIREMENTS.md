@@ -41,8 +41,7 @@ Current backend exists and is usable:
 - multi-image screenshot upload
 - screenshot processing endpoint
 - local OCR runner hook
-- OpenRouter vision extraction
-- heuristic fallback when OCR works but no OpenRouter key exists
+- OCR amount checking and comparison to vision orders
 - dedupe/upsert by source app + datetime + restaurant + amount
 - editable order rows
 - export `.xls`, `.csv`, `.pdf`
@@ -72,11 +71,11 @@ ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::Doubl
 
 The backend was adjusted so this does not block the product flow:
 
-- it tries local OCR first
-- if OCR fails and `OPENROUTER_API_KEY` is configured, OpenRouter vision extraction can still read the screenshot directly
-- if both OCR and OpenRouter are unavailable, screenshot processing fails with a useful error
+- it tries local OCR first for amount checking
+- if OCR fails, it still runs OpenRouter vision extraction, but sets amount check state to unavailable
+- if OpenRouter API key is missing or extraction fails, screenshot processing fails with a useful error
 
-For v1 accuracy, OpenRouter vision should be treated as the primary reliable extractor. Local OCR is still useful later for evidence boxes, cost reduction, and offline mode.
+OCR is the amount checker, OpenRouter vision is the order extractor, and multiset comparison is the trust gate. Local OCR is still useful later for evidence boxes, cost reduction, and offline mode.
 
 ## Design Assignment For The Next UX/UI AI
 
@@ -108,8 +107,7 @@ The designer should produce:
 - create/import batch flow
 - multi-screenshot upload flow
 - processing/progress state
-- review queue
-- order detail/edit sheet
+- optional correction surface for check state warning rows
 - settings screen or bottom sheet for extraction model setup
 - export screen
 - future analytics/dashboard direction
@@ -193,26 +191,19 @@ Processing state should show:
 
 Do not show raw OCR internals unless in a future developer/debug mode.
 
-### 4. Review Extracted Orders
+### 4. Check Extracted Orders (Optional)
 
-Review is the most important UX.
+Check state warning rows ("Needs check" or "May need checking") are surfaced to the user.
 
 Requirements:
-
-- uncertain rows first
-- quick edit for restaurant/date/status/amount/refund/items
+- OCR amount checker mismatch or unavailable status clearly flagged
+- quick edit or deletion for erroneous rows
 - status must be very clear: completed, cancelled, refunded, unknown
 - totals must visibly update after edits
-- user can mark a row corrected
-- user can delete a bad row
-- user can continue adding screenshots later
 
 Ideal mobile pattern:
-
-- list of order rows
-- tap row opens bottom sheet/detail screen
-- detail screen shows source screenshot preview if available
-- evidence/highlight boxes can be future work; do not block v1 design on it
+- list of order rows with warning badges
+- tap row opens a bottom sheet/detail screen for correction
 
 ### 5. Export
 
@@ -339,7 +330,6 @@ Editable fields:
 - `refund_amount`
 - `net_amount`
 - `items_text`
-- `confidence`
 
 Patching marks the row as `corrected`.
 
@@ -435,7 +425,6 @@ Fields:
 - `refund_amount`
 - `net_amount`
 - `items_text`
-- `confidence`
 - `review_state`
 - `duplicate_key`
 - `source_screenshot_ids_json`

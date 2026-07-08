@@ -36,7 +36,8 @@ Important: Review is not a primary step. Do not make Review a main tab or requir
 - Upload storage: `data/uploads/`.
 - Export storage/runtime generation: `data/exports/` and export builders in `server/export.ts`.
 - OCR worker: `scripts/paddle_ocr_worker.py` via `server/ocr/ocr-runner.ts`.
-- LLM extraction: OpenRouter vision path in `server/extraction/openrouter.ts`, heuristic fallback in `server/extraction/heuristics.ts`.
+- Order Extraction: OpenRouter vision path in `server/extraction/openrouter.ts` (primary extractor).
+- Amount Checker: PaddleOCR visible amount scanner with multiset comparison in `server/extraction/amount-check.ts` (trust gate).
 
 ## Dev Commands
 
@@ -78,7 +79,7 @@ Never commit `.env`, database files, uploads, exports, or secrets.
 ## Architecture Rules
 
 - Keep OrderLedger independent. Do not import from Muse, copy Muse runtime owners, or add Muse naming.
-- Keep the import flow staged but simple. Upload should only store screenshots and show the file list; Read should run OCR/extraction; Dashboard should only show extracted summary.
+- Keep the import flow staged but simple. Upload should only store screenshots and show the file list; Read should run OpenRouter order extraction + OCR amount check; Dashboard should only show extracted summary.
 - Keep API calls centralized in `src/api.ts`.
 - Keep shared client state in `src/state/AppData.tsx`.
 - Keep backend route ownership in `server/index.ts` unless a route area becomes large enough to justify a focused router split.
@@ -113,7 +114,7 @@ Avoid making a marketing landing page.
 `ordersNeedingReview` currently means rows that may need checking. In user-facing UI, prefer "Needs check" or "May need checking" over "Review" unless building an explicit optional correction screen.
 
 Possible reasons a row needs checking:
-- low OCR/LLM confidence
+- OCR amount check mismatch or unavailable
 - cancelled order
 - refunded order
 - incomplete date/amount/restaurant data
@@ -138,7 +139,7 @@ When committing in a dirty tree:
 ## Known Issues (verified 2026-07-08)
 
 - Local PaddleOCR currently fails on real screenshots on this Windows setup with `(Unimplemented) ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`. This is a Paddle runtime bug, not an app bug.
-- `.env` and saved app settings both have `OPENROUTER_API_KEY` empty, so the OpenRouter fallback in `server/extraction/openrouter.ts` returns `null` and `processBatch` throws for every new screenshot (`server/extraction/process.ts:27`).
+- `.env` and saved app settings both have `OPENROUTER_API_KEY` empty, so the OpenRouter extractor in `server/extraction/openrouter.ts` returns `null` and `processBatch` throws for every new screenshot (`server/extraction/process.ts:27`).
 - Net effect: `Read screenshots` does not currently produce order rows for any newly uploaded screenshot. The 10 orders in the local DB all come from `npm run legacy:import-monthly`, not from extraction.
 - Do not assume extraction "just works" when testing changes in this environment — configure `OPENROUTER_API_KEY` first, or fix the Paddle install, before relying on `Read screenshots` to verify a change.
 

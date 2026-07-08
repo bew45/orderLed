@@ -1,5 +1,4 @@
 import { compareAmounts, scanAmountCandidates } from "./amount-check";
-import { extractWithHeuristics } from "./heuristics";
 import { extractWithOpenRouter } from "./openrouter";
 import { guessSourceAppFromText, normalizeExtractedOrder, evidenceFromIds } from "../normalize";
 import { runOcrQueued } from "../ocr/ocr-runner";
@@ -29,32 +28,34 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
       const guessed = guessSourceAppFromText(allText);
       const sourceAppGuess = guessed === "unknown" ? screenshot.source_app_guess : guessed;
       const llmResult = await extractWithOpenRouter({ screenshot, ocrRows: rows, sourceAppGuess });
-      if (!llmResult && ocrError) throw new Error(`${ocrError}. Add OPENROUTER_API_KEY to use vision extraction without OCR.`);
-      const result = llmResult ?? extractWithHeuristics(rows, sourceAppGuess);
-      const extractionEngine = llmResult ? `openrouter:${getAppSettings().openrouter_model}` : "heuristics";
-      const normalizedOrders = result.orders
+      if (!llmResult) {
+        throw new Error("OpenRouter API key is required to extract orders. OCR can scan amounts, but it cannot create order rows by itself.");
+      }
+      const extractionEngine = `openrouter:${getAppSettings().openrouter_model}`;
+      const normalizedOrders = llmResult.orders
         .map((order) => ({
           raw: order,
           normalized: normalizeExtractedOrder(order, {
             month: batch.month,
-            sourceApp: order.sourceApp ?? result.sourceApp ?? sourceAppGuess
+            sourceApp: order.sourceApp ?? llmResult.sourceApp ?? sourceAppGuess
           })
         }))
         .filter(({ normalized }) => normalized.restaurantName || normalized.totalAmount > 0);
       const aiCandidates: AmountCandidate[] = normalizedOrders
         .filter(({ normalized }) => normalized.totalAmount > 0)
         .map(({ normalized }) => ({ amount: normalized.totalAmount, text: normalized.restaurantName || "AI amount" }));
-      const comparedAmountCheck = compareAmounts({
+
+      const amountCheck = compareAmounts({
         aiCandidates,
-        scannerCandidates: scanAmountCandidates(rows)
+        scannerCandidates: ocrError ? [] : scanAmountCandidates(rows)
       });
-      const amountCheck = llmResult
-        ? comparedAmountCheck
-        : {
-            ...comparedAmountCheck,
-            state: "unavailable" as const,
-            reasons: [...new Set([...comparedAmountCheck.reasons, "llm_unavailable"])]
-          };
+      if (ocrError) {
+        amountCheck.state = "unavailable";
+        if (!amountCheck.reasons.includes("amount_scan_unavailable")) {
+          amountCheck.reasons.push("amount_scan_unavailable");
+        }
+      }
+
       const reviewState = reviewStateFromAmountCheck(amountCheck.state);
       let extractedOrderCount = 0;
 
@@ -87,7 +88,7 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
       }
 
       markScreenshotProcessed(screenshot.id, {
-        error: ocrError && !llmResult ? ocrError : "",
+        error: "",
         ocrRows: rows,
         sourceAppGuess,
         extractedOrderCount,

@@ -16,12 +16,6 @@ export const IconHome = svg(
   <path d="M4 11.5 12 4l8 7.5M6 9.5V19a1 1 0 0 0 1 1h3v-5a2 2 0 1 1 4 0v5h3a1 1 0 0 0 1-1V9.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
 );
 
-export const IconReview = svg(
-  <>
-    <rect x="4.5" y="3.5" width="15" height="17" rx="2.2" stroke="currentColor" strokeWidth="1.7" />
-    <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-  </>
-);
 
 export const IconHistory = svg(
   <>
