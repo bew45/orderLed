@@ -300,11 +300,14 @@ export function upsertOrder(input: {
     ids.add(input.sourceScreenshotId);
     const currentReviewState = normalizeReviewState(existing.review_state);
     const hasOtherSource = existingIds.some((sourceId) => sourceId !== input.sourceScreenshotId);
-    const reviewState: ReviewState = currentReviewState === "corrected"
-      ? "corrected"
-      : currentReviewState === "needs_check" && input.reviewState === "ok" && hasOtherSource
-        ? "needs_check"
-        : input.reviewState;
+    const isNewScreenshot = !existingIds.includes(input.sourceScreenshotId);
+    const reviewState: ReviewState = isNewScreenshot
+      ? "needs_check" // Flag for manual check if duplicate order is detected on a new screenshot!
+      : currentReviewState === "corrected"
+        ? "corrected"
+        : currentReviewState === "needs_check" && input.reviewState === "ok" && hasOtherSource
+          ? "needs_check"
+          : input.reviewState;
     const shouldReplace = currentReviewState !== "corrected" && completenessScore(input) >= completenessScore(existing);
     db.prepare(`
       UPDATE orders SET
