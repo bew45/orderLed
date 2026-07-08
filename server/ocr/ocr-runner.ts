@@ -32,7 +32,11 @@ async function runPaddleOcr(screenshot: Screenshot): Promise<OcrRow[]> {
   return await new Promise((resolve, reject) => {
     const child = spawn(pythonCommand(), [helper, imagePath, "--lang", paddleLang()], {
       cwd: process.cwd(),
-      windowsHide: true
+      windowsHide: true,
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: "utf-8"
+      }
     });
     let stdout = "";
     let stderr = "";

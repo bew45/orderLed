@@ -2,6 +2,7 @@ export type SourceApp = "grab" | "lineman" | "shopeefood" | "unknown";
 export type OrderStatus = "completed" | "cancelled" | "refunded" | "unknown";
 export type ReviewState = "ok" | "needs_check" | "corrected";
 export type AmountCheckState = "not_checked" | "matched" | "mismatch" | "unavailable";
+export type ProcessingStepStatus = "not_started" | "queued" | "running" | "done" | "failed" | "skipped";
 
 export type Rect = {
   x: number;
@@ -60,6 +61,12 @@ export type Screenshot = {
   extraction_engine: string;
   amount_check_state: AmountCheckState;
   amount_check_json: string;
+  ocr_status: ProcessingStepStatus;
+  ocr_error: string;
+  ocr_completed_at: number;
+  llm_status: ProcessingStepStatus;
+  llm_error: string;
+  llm_completed_at: number;
   processed_at: number;
   error: string;
   created_at: number;
@@ -86,6 +93,7 @@ export type OrderRow = {
 };
 
 export type ExtractedOrder = {
+  screenOrder?: number;
   sourceApp?: SourceApp;
   orderedAt?: string;
   restaurantName?: string;
@@ -115,5 +123,10 @@ export type AppSettings = {
   paddle_python: string;
   paddle_lang: string;
   paddle_timeout_ms: number;
+  ocr_amount_checker_enabled: boolean;
   favorite_models: string[];
+  promptpay_qr_enabled: boolean;
+  promptpay_amount_locked: boolean;
+  promptpay_id: string;
+  promptpay_recipient_name: string;
 };

@@ -21,12 +21,13 @@ The real flow is intentionally simple:
 1. User creates or selects an import session.
 2. User uploads many iPhone screenshots, often 20-30+ images.
 3. The Import workspace immediately shows uploaded files and lets the user delete mistakes before reading.
-4. User taps one clear Read action to run OCR/extraction.
-5. The Import workspace shows OCR text, extracted rows, detected months, app counts, and batch status.
-6. User opens Dashboard for the summary: net spend, completed spend, order count, months, restaurants, apps, and rows that may need checking.
-7. User exports Excel / CSV / PDF.
+4. User taps one clear Read action to run OpenRouter order extraction + OCR amount check.
+5. The Import workspace shows OCR text, extracted rows, detected months, app counts, per-screenshot amount-check badges, and batch status.
+6. If any rows are flagged `needs_check`, an optional **"Check N orders"** button appears in Import. It opens `src/components/CheckFlow.tsx`, a full-screen page-by-page review: one screenshot image per page (shown at full width/natural size, never cropped), the flagged orders extracted from that image listed below it with tap-to-edit-inline, and either "Confirm all correct" (bulk) or per-row Edit/Delete.
+7. User opens Dashboard for the summary: net spend, completed spend, order count, months, restaurants, apps, and rows that may need checking.
+8. User exports Excel / CSV / PDF.
 
-Important: Review is not a primary step. Do not make Review a main tab or required workflow. Low-confidence, cancelled, refunded, or suspicious rows can be surfaced as "Needs check" or an optional correction surface, but the main app should feel like import workspace -> read -> dashboard -> export.
+Important: Review/Check is not a primary step. Do not make Check a main tab or required workflow — it is entered only from the Import workspace button above, never from the bottom tab bar. Mismatched, cancelled, refunded, or incomplete rows can be surfaced as "Needs check", but the main app should feel like import workspace -> read -> dashboard -> export.
 
 ## Current Runtime Shape
 
@@ -36,8 +37,11 @@ Important: Review is not a primary step. Do not make Review a main tab or requir
 - Upload storage: `data/uploads/`.
 - Export storage/runtime generation: `data/exports/` and export builders in `server/export.ts`.
 - OCR worker: `scripts/paddle_ocr_worker.py` via `server/ocr/ocr-runner.ts`.
-- Order Extraction: OpenRouter vision path in `server/extraction/openrouter.ts` (primary extractor).
+- Order Extraction: OpenRouter vision path in `server/extraction/openrouter.ts` (sole extractor — no fallback).
 - Amount Checker: PaddleOCR visible amount scanner with multiset comparison in `server/extraction/amount-check.ts` (trust gate).
+- Check/confirm UI: `src/components/CheckFlow.tsx`, entered only via a button in `src/screens/ImportScreen.tsx` when `needs_check` orders exist for the active batch.
+- Model picker: `/api/settings/openrouter-models` filters OpenRouter's `/models` response to `architecture.input_modalities.includes("image")` only (`server/index.ts`) — this app always sends screenshots as images, so text-only models are excluded before they ever reach Settings.
+- Each screenshot records which engine actually processed it in `screenshots.extraction_engine` (e.g. `openrouter:google/gemini-2.5-flash-lite`), shown in Import as "Read with …".
 
 ## Dev Commands
 
@@ -60,14 +64,18 @@ Build check:
 npm run build
 ```
 
+## Verification
+
+Do not spin up a browser preview / Claude Preview server to verify UI changes in this repo. Run `npx tsc -b` (or `npm run build`) to confirm the code compiles, then stop there — the user runs the real `npm run dev` session themselves (often from their phone against the same batch) and will test changes manually. Do not touch `.claude/launch.json` for ad-hoc debug preview servers either.
+
 ## Environment
 
 `.env` keys:
 
 - `PORT=8788`
 - `HOST=127.0.0.1`
-- `OPENROUTER_API_KEY=` recommended for accurate extraction
-- `OPENROUTER_MODEL=` recommended model id
+- `OPENROUTER_API_KEY=` **required** — `heuristics.ts` was removed; `processBatch` throws immediately if no key is configured (in `.env` or saved Settings). There is no fallback extractor anymore.
+- `OPENROUTER_MODEL=` optional; defaults to `google/gemini-2.5-flash-lite` if unset (`server/extraction/openrouter.ts`)
 - `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
 - `ORDERLEDGER_PADDLE_PYTHON=` optional Python path
 - `ORDERLEDGER_PADDLE_LANG=th`
@@ -86,6 +94,7 @@ Never commit `.env`, database files, uploads, exports, or secrets.
 - Keep extraction ownership in `server/extraction/`.
 - Keep OCR ownership in `server/ocr/`.
 - Keep DB schema and migrations in `server/db.ts` / `server/store.ts`.
+- Keep the Check/confirm flow in `src/components/CheckFlow.tsx`, entered only from an Import-workspace button — never add it to `TabBar` (`src/components/ui.tsx`).
 - Prefer improving extraction accuracy over adding workflow complexity.
 - Do not add a new queue, cache, or worker abstraction unless the current process path cannot support the requirement.
 
@@ -138,10 +147,10 @@ When committing in a dirty tree:
 
 ## Known Issues (verified 2026-07-08)
 
-- Local PaddleOCR currently fails on real screenshots on this Windows setup with `(Unimplemented) ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`. This is a Paddle runtime bug, not an app bug.
-- `.env` and saved app settings both have `OPENROUTER_API_KEY` empty, so the OpenRouter extractor in `server/extraction/openrouter.ts` returns `null` and `processBatch` throws for every new screenshot (`server/extraction/process.ts:27`).
-- Net effect: `Read screenshots` does not currently produce order rows for any newly uploaded screenshot. The 10 orders in the local DB all come from `npm run legacy:import-monthly`, not from extraction.
-- Do not assume extraction "just works" when testing changes in this environment — configure `OPENROUTER_API_KEY` first, or fix the Paddle install, before relying on `Read screenshots` to verify a change.
+- **Local PaddleOCR fails on this Windows setup.** Real screenshots hit `(Unimplemented) ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]` — a `paddlepaddle 3.3.1` PIR/oneDNN runtime bug (the `PP-OCRv5_server_det` detection model triggers it on CPU), not an app bug. `FLAGS_use_mkldnn`/`FLAGS_use_onednn` env vars in `scripts/paddle_ocr_worker.py` do **not** disable it on this Paddle version.
+  - This is **non-blocking** for order extraction: `processBatch` (`server/extraction/process.ts`) catches the OCR error and continues straight to OpenRouter, which reads the image directly.
+  - It does degrade the **amount-check verifier** (`server/extraction/amount-check.ts`): with no OCR rows, `scannerCandidates` is empty, so `amount_check_state` becomes `"unavailable"` (not `"matched"`), and the order's `review_state` becomes `"needs_check"` purely because there's nothing to cross-check against — not because the AI extraction was wrong.
+- **OpenRouter extraction is confirmed working end-to-end** as of this session (real batch: 3/3 screenshots read, 16 orders extracted via `google/gemma-4-31b-it`, engine-tracked as `openrouter:google/gemma-4-31b-it` in `screenshots.extraction_engine`). Do not assume it's broken — check `getAppSettings().openrouter_api_key` (Settings sheet or `.env`) is actually set before debugging extraction failures.
 
 ## Start Here
 

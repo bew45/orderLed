@@ -35,11 +35,18 @@ function isLikelyNoise(text: string) {
   return false;
 }
 
+function isRightSidePriceRow(row: OcrRow) {
+  return (row.bbox?.x ?? 0) >= 0.68;
+}
+
 function extractFromRow(row: OcrRow): AmountCandidate[] {
   const candidates: AmountCandidate[] = [];
   const seen = new Set<string>();
   const text = row.text || "";
-  const currencyRe = /(?:\u0e3f|THB)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi;
+  if (!isRightSidePriceRow(row)) return candidates;
+
+  // Dumb approach: find any currency symbol ($, ฿, THB) followed by digits
+  const currencyRe = /(?:\u0e3f|THB|\$)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi;
   let match: RegExpExecArray | null;
 
   while ((match = currencyRe.exec(text))) {
@@ -51,12 +58,13 @@ function extractFromRow(row: OcrRow): AmountCandidate[] {
     candidates.push({ amount, text: row.text, rowId: row.id, bbox: row.bbox });
   }
 
-  if (candidates.length > 0 || isLikelyNoise(text) || row.bbox.x < 0.62) {
+  // Fallback: if no currency symbol found and text is not noise, try bare numbers
+  if (candidates.length > 0 || isLikelyNoise(text)) {
     return candidates;
   }
 
-  const rightSideAmountRe = /(?:^|\s)([0-9]{2,5}(?:\.[0-9]{1,2})?)(?:\s|$)/g;
-  while ((match = rightSideAmountRe.exec(text))) {
+  const bareNumberRe = /(?:^|\s)([0-9]{2,6}(?:\.[0-9]{1,2})?)(?:\s|$)/g;
+  while ((match = bareNumberRe.exec(text))) {
     const amount = parseAmount(match[1]);
     if (!amount) continue;
     const key = `${row.id}:${amount.toFixed(2)}`;

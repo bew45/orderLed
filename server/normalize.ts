@@ -53,8 +53,19 @@ export function normalizeSourceApp(value: unknown): SourceApp {
 export function guessSourceAppFromText(text: string): SourceApp {
   const raw = text.toLowerCase();
   if (raw.includes("grabcoins") || raw.includes("activity history")) return "grab";
-  if (raw.includes("คำสั่งซื้อของฉัน") || raw.includes("จัดส่งสำเร็จแล้ว") || raw.includes("สั่งใหม่")) return "lineman";
-  if (raw.includes("shopee") || raw.includes("ช้อปปี้")) return "shopeefood";
+  if (
+    raw.includes("คำสั่งซื้อของฉัน") ||
+    raw.includes("จัดส่งสำเร็จแล้ว") ||
+    raw.includes("ให้คะแนนและทิป") ||
+    raw.includes("ดีลล็อกราคา") ||
+    raw.includes("shopee") ||
+    raw.includes("ช้อปปี้")
+  ) return "shopeefood";
+  if (
+    raw.includes("order history") ||
+    raw.includes("food delivery") ||
+    (raw.includes("ongoing") && (raw.includes("canceled") || raw.includes("cancelled")))
+  ) return "lineman";
   return "unknown";
 }
 

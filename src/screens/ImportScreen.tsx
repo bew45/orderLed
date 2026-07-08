@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { fmtMonthLabel, SOURCE_APP_LABEL, type OrderRow } from "../api";
+import { CheckFlow } from "../components/CheckFlow";
 import { ScreenshotList } from "../components/ScreenshotList";
-import { EmptyState, IconCamera, IconChart, IconInbox, PrimaryButton } from "../components/ui";
+import { Alert, EmptyState, IconCamera, IconChart, IconInbox, PrimaryButton } from "../components/ui";
 import { useAppData } from "../state/AppData";
 
 type StageState = "waiting" | "active" | "done" | "failed";
@@ -28,15 +29,34 @@ function countBy<T>(items: T[], pick: (item: T) => string) {
 }
 
 export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () => void; onOpenDashboard: () => void }) {
-  const { activeBatch, summary, screenshots, orders, deleteScreenshot, processActiveBatch } = useAppData();
+  const { activeBatch, summary, screenshots, orders, deleteScreenshot, processActiveBatch, refreshOrders } = useAppData();
   const [processing, setProcessing] = useState(false);
+  const [processError, setProcessError] = useState("");
+  const [checkTarget, setCheckTarget] = useState<{ screenshotId?: string } | null>(null);
+  const [awaitingFirstPoll, setAwaitingFirstPoll] = useState(false);
+
+  // Fast poll every 1.5s while processing (like Muse manga's useMangaJob refetchInterval)
+  useEffect(() => {
+    if (!processing) return;
+    const poll = () => { refreshOrders().then(() => setAwaitingFirstPoll(false)); };
+    // First poll after 600ms (give backend time to clear screenshots)
+    const t = window.setTimeout(poll, 600);
+    // Continue every 1.5s
+    const id = window.setInterval(poll, 1500);
+    return () => { window.clearTimeout(t); window.clearInterval(id); };
+  }, [processing, refreshOrders]);
 
   async function handleProcess(force: boolean) {
     setProcessing(true);
+    setProcessError("");
+    setAwaitingFirstPoll(true);
     try {
       await processActiveBatch(force);
+    } catch (err: any) {
+      setProcessError(err.message || "Failed to read screenshots");
     } finally {
       setProcessing(false);
+      setAwaitingFirstPoll(false);
     }
   }
 
@@ -72,6 +92,7 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
     );
   }
 
+  const needsCheckOrders = orders.filter((order) => order.review_state === "needs_check");
   const total = summary?.screenshotsTotal ?? screenshots.length;
   const failed = summary?.screenshotsFailed ?? screenshots.filter((shot) => shot.error).length;
   const processed = summary?.screenshotsProcessed ?? screenshots.filter((shot) => shot.processed_at > 0).length;
@@ -79,6 +100,8 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
   const unread = screenshots.filter((shot) => !shot.processed_at && !shot.error).length;
   const canReadNew = total > 0 && !processing && (unread > 0 || failed > 0);
   const canReread = total > 0 && !processing && (processed > 0 || failed > 0 || ordersFound > 0);
+  // Show 0% until first poll returns fresh data, then show real progress
+  const percent = awaitingFirstPoll ? 0 : total > 0 ? Math.round((processed / total) * 100) : 0;
   const stages: Array<{ label: string; meta: string; state: StageState }> = [
     { label: "Upload", meta: `${total} file${total === 1 ? "" : "s"}`, state: total > 0 ? "done" : "active" },
     {
@@ -127,6 +150,14 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
             </div>
           ))}
         </div>
+        {processing && (
+          <div className="import-progress-row">
+            <span className="import-progress-track">
+              <i style={{ width: `${percent}%` }} />
+            </span>
+            <em>{percent}%</em>
+          </div>
+        )}
       </section>
 
       <div className="btn-row import-action-row">
@@ -138,9 +169,17 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
         </PrimaryButton>
       </div>
 
+      {processError && <Alert variant="error" title="Reading failed" message={processError} onDismiss={() => setProcessError("")} />}
+
       {ordersFound > 0 && (
         <PrimaryButton block onClick={props.onOpenDashboard}>
           <IconChart size={16} /> Open Dashboard
+        </PrimaryButton>
+      )}
+
+      {needsCheckOrders.length > 0 && (
+        <PrimaryButton block variant="ghost" onClick={() => setCheckTarget({})}>
+          Check {needsCheckOrders.length} order{needsCheckOrders.length === 1 ? "" : "s"}
         </PrimaryButton>
       )}
 
@@ -181,8 +220,22 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
             <h3>Uploaded files and OCR</h3>
             <span>{screenshots.length} image{screenshots.length === 1 ? "" : "s"}</span>
           </div>
-          <ScreenshotList screenshots={screenshots} onDelete={deleteScreenshot} showOcr />
+          <ScreenshotList
+            screenshots={screenshots}
+            onDelete={deleteScreenshot}
+            onCheck={(screenshotId) => setCheckTarget({ screenshotId })}
+            showOcr
+          />
         </section>
+      )}
+
+      {checkTarget && (
+        <CheckFlow
+          orders={orders}
+          screenshots={screenshots}
+          focusScreenshotId={checkTarget.screenshotId}
+          onClose={() => setCheckTarget(null)}
+        />
       )}
     </div>
   );

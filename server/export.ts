@@ -1,6 +1,8 @@
-import { existsSync } from "fs";
-import PDFDocument from "pdfkit";
-import { getBatch, getBatchSummary, listOrders } from "./store";
+import puppeteer, { type Browser } from "puppeteer";
+import generatePayload from "promptpay-qr";
+import QRCode from "qrcode";
+import { getBatch, getBatchSummary, listOrders, getAppSettings } from "./store";
+import { renderBatchInvoiceHtml } from "./pdf-template";
 import type { OrderRow } from "./types";
 
 function batchOrThrow(batchId: string) {
@@ -142,48 +144,66 @@ export function buildCsvExport(batchId: string, opts: { month?: string } = {}) {
   };
 }
 
-function resolveThaiFont() {
-  const candidates = [
-    "C:/Windows/Fonts/tahoma.ttf",
-    "C:/Windows/Fonts/THSarabunNew.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf"
-  ];
-  return candidates.find((candidate) => existsSync(candidate));
+let browserPromise: Promise<Browser> | null = null;
+
+function getBrowser() {
+  if (!browserPromise) {
+    browserPromise = puppeteer.launch({ headless: true }).catch((err) => {
+      browserPromise = null;
+      throw err;
+    });
+  }
+  return browserPromise;
 }
 
 export async function buildPdfExport(batchId: string, opts: { month?: string } = {}) {
   const batch = batchOrThrow(batchId);
   const orders = filterOrders(listOrders(batchId), opts.month);
   const summary = opts.month ? summarizeOrders(orders) : getBatchSummary(batchId);
-  const fontPath = resolveThaiFont();
 
-  const buffer = await new Promise<Buffer>((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 42, size: "A4" });
-    const chunks: Buffer[] = [];
-    doc.on("data", (chunk) => chunks.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-    if (fontPath) doc.font(fontPath);
-
-    doc.fontSize(20).text("OrderLedger", { continued: false });
-    doc.fontSize(12).fillColor("#555").text(`${batch.title}${opts.month ? ` - ${opts.month}` : ""}`);
-    doc.moveDown();
-    doc.fillColor("#111").fontSize(12).text(`Net spend: ${summary.netSpend.toFixed(2)} THB`);
-    doc.text(`Completed spend: ${summary.completedSpend.toFixed(2)} THB`);
-    doc.text(`Orders: ${summary.ordersTotal}`);
-    doc.text(`Needs check: ${summary.ordersNeedingReview}`);
-    doc.moveDown();
-    doc.fontSize(10);
-    for (const order of orders.slice(0, 120)) {
-      doc.text(`${order.ordered_at.slice(0, 10)} ${order.source_app} ${order.restaurant_name} ${order.net_amount.toFixed(2)} THB (${order.status})`);
+  let qrDataUrl: string | null = null;
+  const settings = getAppSettings();
+  if (settings.promptpay_qr_enabled && settings.promptpay_id) {
+    try {
+      const amount = settings.promptpay_amount_locked ? summary.netSpend : undefined;
+      const payload = generatePayload(settings.promptpay_id, amount !== undefined ? { amount } : {});
+      qrDataUrl = await QRCode.toDataURL(payload, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 180
+      });
+    } catch (err) {
+      console.error("Failed to generate PromptPay QR:", err);
     }
-    if (orders.length > 120) doc.text(`...and ${orders.length - 120} more rows`);
-    doc.end();
+  }
+
+  const html = renderBatchInvoiceHtml({
+    batch,
+    orders,
+    summary,
+    month: opts.month,
+    promptPayQr: qrDataUrl ? {
+      qrDataUrl,
+      id: settings.promptpay_id,
+      recipientName: settings.promptpay_recipient_name
+    } : undefined
   });
 
-  return {
-    buffer,
-    contentType: "application/pdf",
-    filename: `${baseName(batch.title, opts.month ?? batch.month)}.pdf`
-  };
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setContent(html, { waitUntil: "load" });
+    const buffer = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "0px", bottom: "0px", left: "0px", right: "0px" }
+    });
+    return {
+      buffer: Buffer.from(buffer),
+      contentType: "application/pdf",
+      filename: `${baseName(batch.title, opts.month ?? batch.month)}.pdf`
+    };
+  } finally {
+    await page.close();
+  }
 }

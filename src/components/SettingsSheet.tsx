@@ -177,14 +177,27 @@ export function SettingsSheet(props: { onClose: () => void }) {
           <div className="settings-section-head">
             <div>
               <h3>Local OCR amount checker</h3>
-              <p>OCR scans visible amounts so OrderLedger can compare them with the AI extracted orders.</p>
+              <p>OCR scans visible amounts so OrderLedger can compare them with the AI extracted orders. Turn it off for LLM-only extraction and manual checking.</p>
             </div>
           </div>
+
+          <label className="settings-toggle-row">
+            <span>
+              <strong>Use OCR amount checker</strong>
+              <small>{draft.ocr_amount_checker_enabled ? "AI rows will be compared against OCR-scanned amounts." : "OpenRouter vision only. Extracted rows will need manual check."}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={draft.ocr_amount_checker_enabled}
+              onChange={(e) => patch({ ocr_amount_checker_enabled: e.target.checked })}
+            />
+          </label>
 
           <div className="field">
             <label>Python path</label>
             <input
               value={draft.paddle_python}
+              disabled={!draft.ocr_amount_checker_enabled}
               placeholder=".venv-ocr\\Scripts\\python.exe"
               onChange={(e) => patch({ paddle_python: e.target.value })}
             />
@@ -193,16 +206,71 @@ export function SettingsSheet(props: { onClose: () => void }) {
           <div className="field-row">
             <div className="field">
               <label>OCR language</label>
-              <input value={draft.paddle_lang} onChange={(e) => patch({ paddle_lang: e.target.value })} />
+              <input value={draft.paddle_lang} disabled={!draft.ocr_amount_checker_enabled} onChange={(e) => patch({ paddle_lang: e.target.value })} />
             </div>
             <div className="field">
               <label>Timeout (ms)</label>
               <input
                 type="number"
                 value={draft.paddle_timeout_ms}
+                disabled={!draft.ocr_amount_checker_enabled}
                 onChange={(e) => patch({ paddle_timeout_ms: Number(e.target.value) })}
               />
             </div>
+          </div>
+        </section>
+
+        <section className="settings-section-card">
+          <div className="settings-section-head">
+            <div>
+              <h3>PromptPay QR Generator</h3>
+              <p>Generate a scan-to-pay QR code embedded directly inside exported PDF invoices.</p>
+            </div>
+          </div>
+
+          <label className="settings-toggle-row">
+            <span>
+              <strong>Include PromptPay QR</strong>
+              <small>{draft.promptpay_qr_enabled ? "A fixed-amount PromptPay QR code will be embedded in exported PDFs." : "Disabled."}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={draft.promptpay_qr_enabled}
+              onChange={(e) => patch({ promptpay_qr_enabled: e.target.checked })}
+            />
+          </label>
+
+          <label className="settings-toggle-row">
+            <span>
+              <strong>Lock amount in QR code</strong>
+              <small>{draft.promptpay_amount_locked ? "Payer cannot edit the amount in their bank app." : "Payer can edit/type the amount in their bank app."}</small>
+            </span>
+            <input
+              type="checkbox"
+              disabled={!draft.promptpay_qr_enabled}
+              checked={draft.promptpay_amount_locked}
+              onChange={(e) => patch({ promptpay_amount_locked: e.target.checked })}
+            />
+          </label>
+
+          <div className="field">
+            <label>PromptPay ID (Mobile no. or National ID)</label>
+            <input
+              value={draft.promptpay_id || ""}
+              disabled={!draft.promptpay_qr_enabled}
+              placeholder="e.g. 0812345678"
+              onChange={(e) => patch({ promptpay_id: e.target.value })}
+            />
+          </div>
+
+          <div className="field">
+            <label>Recipient Name</label>
+            <input
+              value={draft.promptpay_recipient_name || ""}
+              disabled={!draft.promptpay_qr_enabled}
+              placeholder="e.g. Somchai Dev"
+              onChange={(e) => patch({ promptpay_recipient_name: e.target.value })}
+            />
           </div>
         </section>
 

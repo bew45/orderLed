@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { readStoredImage } from "../image-store";
 import { parseJson } from "../json";
 import { getAppSettings } from "../store";
-import type { ExtractedOrder, OcrRow, Screenshot, SourceApp } from "../types";
+import type { ExtractedOrder, Screenshot, SourceApp } from "../types";
 
 type ExtractionResult = {
   sourceApp: SourceApp;
@@ -40,59 +40,47 @@ function extractJson(raw: string) {
 
 export async function extractWithOpenRouter(input: {
   screenshot: Screenshot;
-  ocrRows: OcrRow[];
   sourceAppGuess: SourceApp;
 }): Promise<ExtractionResult | null> {
   const key = getAppSettings().openrouter_api_key;
   if (!key) return null;
-
-  const compactRows = input.ocrRows.map((row) => ({
-    id: row.id,
-    t: row.text,
-    c: Number(row.confidence.toFixed(3)),
-    b: [
-      Number(row.bbox.x.toFixed(3)),
-      Number(row.bbox.y.toFixed(3)),
-      Number(row.bbox.w.toFixed(3)),
-      Number(row.bbox.h.toFixed(3))
-    ]
-  }));
 
   const prompt = [
     "You extract food delivery order history cards from mobile screenshots.",
     "Return JSON only. Do not explain.",
     "",
     "Supported apps: grab, lineman, shopeefood, unknown.",
+    "App identification cues, check these before guessing:",
+    "- grab: header text \"Activity History\"; filter chips are solid stadium pills (dark green when selected, mint green when not) labelled things like Transport/Food/Mart/Dine Out/Finance; order rows may show \"+N GrabCoins\"; app-wide accent color is green.",
+    "- lineman: header text \"Order History\"; three tabs Ongoing / Completed / Canceled or Failed with a green underline on the active tab; filter chips are outlined (not filled) pills labelled Food Delivery/Mart/Messenger/Ride; green \"Order completed\" status text; app-wide accent color is green.",
+    "- shopeefood: app-wide accent color is orange/red (buttons, active tab underline, icons all orange); Thai header \"คำสั่งซื้อของฉัน\"; two tabs \"คำสั่งซื้ออาหาร\" / \"ดีลล็อกราคา\"; status text \"จัดส่งสำเร็จแล้ว\"; orange button \"สั่งใหม่\".",
+    "If the screenshot is mostly orange/red, it is shopeefood. If green, use the header text and tab labels above to tell grab and lineman apart. Only return unknown if truly no cues match.",
     "Each visible order card should become one order.",
     "Ignore navigation, battery banners, tabs, reorder buttons, ratings, and decorative text.",
     "Detect completed, cancelled, refunded, or unknown status.",
     "For cancelled/refunded Thai text, watch for: คำสั่งซื้อถูกยกเลิกแล้ว, คืนเงิน, ยกเลิก.",
-    "Use OCR rows as anchors, but trust the image if OCR is noisy.",
-    "If OCR rows are empty, read the screenshot directly from the image.",
+    "Read directly from the image. No OCR text or OCR boxes are provided.",
     "If a value is unclear, return it blank/0. Never invent.",
+    "List the orders array in the exact same top-to-bottom order the order cards appear on the screen, topmost card first.",
+    "Every order MUST include screenOrder: 1 for the top visible order card, 2 for the next card, 3 for the next, and so on.",
+    "Do not sort by date, time, restaurant name, or amount. Preserve the visual screen order only.",
+    "If two cards look similar, still number them by their vertical position on the screenshot.",
     "",
     "Schema:",
     JSON.stringify({
       sourceApp: "grab|lineman|shopeefood|unknown",
       orders: [{
+        screenOrder: 1,
         orderedAt: "ISO datetime if possible, otherwise visible date text",
         restaurantName: "string",
         totalAmount: 0,
         status: "completed|cancelled|refunded|unknown",
         refundAmount: 0,
-        itemsText: "short readable item names if visible",
-        evidence: {
-          restaurant: ["ocr_0001"],
-          date: ["ocr_0002"],
-          amount: ["ocr_0003"],
-          status: ["ocr_0004"]
-        }
+        itemsText: "short readable item names if visible"
       }]
     }),
     "",
-    `sourceAppGuess=${input.sourceAppGuess}`,
-    "OCR rows:",
-    JSON.stringify(compactRows)
+    `sourceAppGuess=${input.sourceAppGuess}`
   ].join("\n");
 
   const response = await fetch(`${baseUrl()}/chat/completions`, {

@@ -7,7 +7,7 @@
     "dev": "concurrently --names server,web --prefix-colors green,cyan --kill-others-on-fail \"npm:dev:server\" \"npm:dev:web\"",
     "dev:kill": "node scripts/kill-port.mjs 5174 8788",
     "dev:fresh": "npm run dev:kill && npm run dev",
-    "dev:server": "tsx watch --clear-screen=false --include .env server/index.ts",
+    "dev:server": "node --import tsx --watch --watch-path=.env server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "start": "node dist-server/index.js",
@@ -22,7 +22,9 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^2.0.2",
-    "pdfkit": "^0.15.2",
+    "promptpay-qr": "^0.5.0",
+    "puppeteer": "^25.3.0",
+    "qrcode": "^1.5.4",
     "sharp": "^0.33.5"
   },
   "devDependencies": {
@@ -30,14 +32,14 @@
     "@types/express": "^5.0.0",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.10.5",
-    "@types/pdfkit": "^0.13.8",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "concurrently": "^9.1.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "vite": "^6.0.7"
   }
 }

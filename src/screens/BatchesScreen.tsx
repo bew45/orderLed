@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { fmtMoney, type ScreenshotRow } from "../api";
+import { endpoints, fmtMoney, type ScreenshotRow } from "../api";
 import { ScreenshotList } from "../components/ScreenshotList";
 import { useAppData } from "../state/AppData";
-import { EmptyState, IconHistory, IconPlus, IconTrash, PrimaryButton } from "../components/ui";
+import { EmptyState, IconExport, IconHistory, IconPlus, IconTrash, PrimaryButton } from "../components/ui";
 
 export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: () => void }) {
   const { batches, activeBatchId, screenshots, selectBatch, deleteBatch, deleteScreenshot } = useAppData();
@@ -52,6 +52,13 @@ export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: ()
                   onClick={() => { selectBatch(batch.id); props.onSelected(); }}
                 >
                   {batch.id === activeBatchId ? "Open import" : "Select"}
+                </PrimaryButton>
+                <PrimaryButton
+                  className="btn-sm"
+                  variant="ghost"
+                  onClick={() => window.open(endpoints.exportUrl(batch.id, "pdf"), "_blank")}
+                >
+                  <IconExport size={14} /> Export PDF
                 </PrimaryButton>
                 <PrimaryButton className="btn-sm" variant={confirmId === batch.id ? "danger" : "ghost"} onClick={() => handleDelete(batch.id)}>
                   <IconTrash size={14} /> {confirmId === batch.id ? "Confirm" : "Delete"}

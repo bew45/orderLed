@@ -1,16 +1,23 @@
+console.log(`[boot] server/index.ts starting, pid=${process.pid}`);
 import "dotenv/config";
+console.log("[boot] dotenv loaded");
 import cors from "cors";
 import express from "express";
 import multer from "multer";
+console.log("[boot] express/cors/multer loaded");
 import { createHash } from "crypto";
 import { createReadStream } from "fs";
 import { uuid } from "./db";
+console.log("[boot] db loaded (sqlite opened)");
 import { writeScreenshotImage, readStoredImage } from "./image-store";
 import { guessSourceAppFromText } from "./normalize";
+console.log("[boot] image-store/normalize loaded");
 import { processBatch } from "./extraction/process";
+console.log("[boot] extraction/process loaded");
 import {
   addScreenshot,
   createBatch,
+  createManualOrder,
   deleteBatch,
   deleteOrder,
   deleteScreenshot,
@@ -26,10 +33,13 @@ import {
   screenshotHashExists,
   updateOrder
 } from "./store";
+console.log("[boot] store loaded");
 import { buildCsvExport, buildExcelExport, buildPdfExport } from "./export";
+console.log("[boot] export loaded (puppeteer import resolved)");
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 40 * 1024 * 1024 } });
+console.log("[boot] express app created");
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
@@ -231,6 +241,29 @@ app.get("/api/batches/:id/orders", (req, res) => {
   }
 });
 
+app.post("/api/orders", (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const totalAmount = Math.max(0, Number(body.total_amount ?? 0) || 0);
+    const refundAmount = Math.max(0, Number(body.refund_amount ?? 0) || 0);
+    const order = createManualOrder({
+      batchId: String(body.batch_id || ""),
+      sourceScreenshotId: String(body.source_screenshot_id || ""),
+      sourceApp: body.source_app || "unknown",
+      orderedAt: String(body.ordered_at || new Date().toISOString().slice(0, 19)),
+      restaurantName: String(body.restaurant_name || "Unknown restaurant").trim(),
+      totalAmount,
+      status: body.status || "completed",
+      refundAmount,
+      netAmount: Math.max(0, Number(body.net_amount ?? totalAmount - refundAmount) || 0),
+      itemsText: String(body.items_text || "")
+    });
+    res.json({ order });
+  } catch (error: any) {
+    res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 app.patch("/api/orders/:id", (req, res) => {
   try {
     const order = updateOrder(req.params.id, req.body ?? {});
@@ -276,6 +309,9 @@ app.get("/api/batches/:id/export.pdf", async (req, res) => {
 
 const port = Number(process.env.PORT || 8788);
 const host = process.env.HOST || "127.0.0.1";
+console.log(`[boot] calling app.listen(${port}, ${host})`);
 app.listen(port, host, () => {
   console.log(`[orderledger] http://${host}:${port}`);
+}).on("error", (err) => {
+  console.error(`[boot] listen failed: ${err.message}`);
 });

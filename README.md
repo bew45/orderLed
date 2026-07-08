@@ -17,7 +17,7 @@ npm run dev
 
 Open `http://localhost:5174`.
 
-OpenRouter is optional but recommended. Add `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env` for accurate vision extraction.
+**OpenRouter is required, not optional.** There is no local fallback extractor — add `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`, default `google/gemini-2.5-flash-lite`) in `.env` or the Settings sheet before reading screenshots, or `Read` will error immediately.
 
 ## Runtime Shape
 
@@ -37,21 +37,21 @@ OpenRouter is optional but recommended. Add `OPENROUTER_API_KEY` and `OPENROUTER
 - See OCR text, scanned amounts, and verification check states in the Import workspace
 - Merge duplicate visible order cards
 - Open Dashboard after processing
-- Optionally check mismatch or unavailable order rows
+- Check and correct flagged orders one screenshot-page at a time (`CheckFlow`), entered from an Import-workspace button
 - Export Excel, CSV, and PDF
 
-## Current Status (checked against code + local data, 2026-07-08)
+## Current Status (checked against code + live data, 2026-07-08)
 
-Working end-to-end today:
+Working end-to-end, confirmed with real data today:
 
 - Create/select import, upload screenshots, dedupe by content hash, delete before reading
-- Import workspace shows the file list immediately, batch pipeline stages, OCR/order counts
+- Import workspace shows the file list immediately, batch pipeline stages, OCR/order counts, and per-screenshot amount-check badges
+- **Reading real screenshots via OpenRouter works.** Confirmed on a live batch: 3/3 screenshots read, 16 orders extracted (`google/gemma-4-31b-it`), engine tracked per screenshot as "Read with OpenRouter · google/gemma-4-31b-it"
+- Check flow: flagged (`needs_check`) orders can be confirmed in bulk or edited/deleted per row, grouped by screenshot
 - Dashboard aggregates all batches (net spend, completed spend, months, restaurants, apps, status)
 - Excel / CSV / PDF export
 
-Not working out of the box:
+Known limitation (non-blocking):
 
-- **Reading real screenshots currently fails.** Local PaddleOCR hits a Windows/Paddle runtime bug (`ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`), and `OPENROUTER_API_KEY` is unset in both `.env` and saved Settings, so OpenRouter vision extraction has no key to run. `Read screenshots` errors out for any new upload until one of the two extraction paths is fixed/configured.
-- The orders visible in Dashboard right now all come from `npm run legacy:import-monthly` (a one-off script that inserts monthly totals directly into the DB), not from screenshot extraction. No screenshot has ever produced a real order row in this environment.
-
-To unblock extraction, set `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`) via Settings or `.env` — this bypasses the broken local OCR path entirely since OpenRouter reads the image directly.
+- **Local PaddleOCR fails on Windows** with a `paddlepaddle 3.3.1` PIR/oneDNN runtime bug (`ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`). Order extraction doesn't need it — OpenRouter reads the image directly regardless — but without OCR rows, the amount-check verifier has nothing to cross-check against, so it reports `"unavailable"` and those orders land in `needs_check` more often than they would with working OCR. Fixing PaddleOCR is optional accuracy work, not a blocker.
+- Legacy data note: some orders in the DB predate this session and came from `npm run legacy:import-monthly` (manual monthly-total import), not screenshot extraction — those show up as `"Legacy monthly total"` rows, distinguishable by `duplicate_key` starting with `legacy-monthly-total:`.

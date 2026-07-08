@@ -104,5 +104,11 @@ addColumnIfMissing("screenshots", "extracted_order_count", "INTEGER NOT NULL DEF
 addColumnIfMissing("screenshots", "extraction_engine", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("screenshots", "amount_check_state", "TEXT NOT NULL DEFAULT 'not_checked'");
 addColumnIfMissing("screenshots", "amount_check_json", "TEXT NOT NULL DEFAULT '{}'");
+addColumnIfMissing("screenshots", "ocr_status", "TEXT NOT NULL DEFAULT 'not_started'");
+addColumnIfMissing("screenshots", "ocr_error", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("screenshots", "ocr_completed_at", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("screenshots", "llm_status", "TEXT NOT NULL DEFAULT 'not_started'");
+addColumnIfMissing("screenshots", "llm_error", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("screenshots", "llm_completed_at", "INTEGER NOT NULL DEFAULT 0");
 
 db.prepare("UPDATE orders SET review_state='needs_check' WHERE review_state='needs_review'").run();

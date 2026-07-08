@@ -37,6 +37,7 @@ export type OrderRow = {
 };
 
 export type AmountCheckState = "not_checked" | "matched" | "mismatch" | "unavailable";
+export type ProcessingStepStatus = "not_started" | "queued" | "running" | "done" | "failed" | "skipped";
 
 export type AmountCandidate = {
   amount: number;
@@ -73,6 +74,12 @@ export type ScreenshotRow = {
   extraction_engine: string;
   amount_check_state: AmountCheckState;
   amount_check_json: string;
+  ocr_status: ProcessingStepStatus;
+  ocr_error: string;
+  ocr_completed_at: number;
+  llm_status: ProcessingStepStatus;
+  llm_error: string;
+  llm_completed_at: number;
   processed_at: number;
   error: string;
   created_at: number;
@@ -93,7 +100,12 @@ export type AppSettings = {
   paddle_python: string;
   paddle_lang: string;
   paddle_timeout_ms: number;
+  ocr_amount_checker_enabled: boolean;
   favorite_models: string[];
+  promptpay_qr_enabled: boolean;
+  promptpay_amount_locked: boolean;
+  promptpay_id: string;
+  promptpay_recipient_name: string;
 };
 
 export type ProviderModel = {
@@ -154,6 +166,9 @@ export const endpoints = {
   updateOrder: (id: string, patch: Partial<OrderRow>) =>
     api<{ order: OrderRow }>(`/api/orders/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
+  createOrder: (input: Partial<OrderRow> & { source_screenshot_id: string }) =>
+    api<{ order: OrderRow }>("/api/orders", { method: "POST", body: JSON.stringify(input) }),
+
   deleteOrder: (id: string) => api<{ ok: true }>(`/api/orders/${id}`, { method: "DELETE" }),
 
   getSettings: () => api<{ settings: AppSettings }>("/api/settings"),
@@ -167,6 +182,27 @@ export const endpoints = {
   exportUrl: (batchId: string, kind: "xls" | "csv" | "pdf", month?: string) =>
     `/api/batches/${batchId}/export.${kind}${month ? `?month=${encodeURIComponent(month)}` : ""}`
 };
+
+export function parseAmountCheck(value: string): AmountCheck | null {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    if (!parsed || typeof parsed !== "object" || typeof parsed.state !== "string") return null;
+    return {
+      state: parsed.state,
+      aiAmounts: Array.isArray(parsed.aiAmounts) ? parsed.aiAmounts.map(Number).filter(Number.isFinite) : [],
+      scannerAmounts: Array.isArray(parsed.scannerAmounts) ? parsed.scannerAmounts.map(Number).filter(Number.isFinite) : [],
+      missingFromAi: Array.isArray(parsed.missingFromAi) ? parsed.missingFromAi.map(Number).filter(Number.isFinite) : [],
+      missingFromScanner: Array.isArray(parsed.missingFromScanner) ? parsed.missingFromScanner.map(Number).filter(Number.isFinite) : [],
+      sumAi: Number(parsed.sumAi || 0),
+      sumScanner: Number(parsed.sumScanner || 0),
+      reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(String) : [],
+      aiCandidates: Array.isArray(parsed.aiCandidates) ? parsed.aiCandidates : [],
+      scannerCandidates: Array.isArray(parsed.scannerCandidates) ? parsed.scannerCandidates : []
+    };
+  } catch {
+    return null;
+  }
+}
 
 export function firstScreenshotId(order: OrderRow): string | null {
   try {
