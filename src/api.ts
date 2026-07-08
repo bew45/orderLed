@@ -156,6 +156,11 @@ export const endpoints = {
       body: JSON.stringify({ force })
     }),
 
+  processScreenshot: (screenshotId: string) =>
+    api<{ summary: BatchSummary }>(`/api/screenshots/${screenshotId}/process`, {
+      method: "POST"
+    }),
+
   stopProcessing: () => api<{ stopped: boolean }>("/api/processing/stop", { method: "POST" }),
 
   listOrders: (batchId: string) =>

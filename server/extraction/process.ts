@@ -7,6 +7,7 @@ import {
   getAppSettings,
   getBatch,
   getBatchSummary,
+  getScreenshot,
   listScreenshots,
   markScreenshotLlm,
   markScreenshotOcr,
@@ -375,4 +376,95 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
   } finally {
     if (activeController === controller) activeController = null;
   }
+}
+
+export async function processSingleScreenshot(screenshotId: string) {
+  if (activeController && !activeController.signal.aborted) {
+    throw new Error("Processing is already running. Stop it before starting another read.");
+  }
+  const screenshot = getScreenshot(screenshotId);
+  if (!screenshot) throw new Error("Screenshot not found");
+  const batch = getBatch(screenshot.batch_id);
+  if (!batch) throw new Error("Batch not found");
+
+  const settings = getAppSettings();
+  const ocrAmountCheckerEnabled = settings.ocr_amount_checker_enabled;
+  const llmRunIso = new Date().toISOString();
+
+  // Clear previous extraction
+  clearScreenshotExtraction(screenshotId);
+
+  // 1. Run LLM
+  const extractionEngine = `openrouter:${settings.openrouter_model}|run:${llmRunIso}|single:true`;
+  markScreenshotLlm(screenshotId, { status: "running", extractionEngine });
+
+  let ocrRows: OcrRow[] = [];
+  let sourceAppGuess = screenshot.source_app_guess;
+  let ocrError = "";
+  let ocrAttentionReasons: string[] = [];
+
+  try {
+    // Start LLM extraction
+    const result = await extractWithOpenRouter({
+      screenshot,
+      sourceAppGuess: screenshot.source_app_guess
+    });
+    if (!result) throw new Error("OpenRouter API key is required to extract orders.");
+
+    const sourceAppGuessLlm = sourceGuessFromLlm(result, screenshot.source_app_guess);
+    const normalizedOrders = normalizeLlmOrders(batch, result, sourceAppGuessLlm);
+    const aiCandidates = aiCandidatesFromOrders(normalizedOrders);
+    const attentionReasonsLlm = attentionReasonsFromLlm(result);
+
+    // 2. Run OCR
+    if (ocrAmountCheckerEnabled) {
+      markScreenshotOcr(screenshotId, { status: "running" });
+      try {
+        const rows = await runOcrQueued(screenshot);
+        ocrRows = rows;
+        sourceAppGuess = sourceGuessFromOcr(screenshot, rows);
+        ocrAttentionReasons = attentionReasonsFromOcr(rows);
+        markScreenshotOcr(screenshotId, { status: "done", rows, sourceAppGuess });
+      } catch (error: any) {
+        ocrError = error?.message || "OCR failed";
+        markScreenshotOcr(screenshotId, { status: "failed", rows: [], sourceAppGuess: screenshot.source_app_guess, error: ocrError });
+      }
+    } else {
+      markScreenshotOcr(screenshotId, { status: "skipped", rows: [], sourceAppGuess: screenshot.source_app_guess });
+    }
+
+    const attentionReasons = mergeReasons(attentionReasonsLlm, ocrError ? [] : ocrAttentionReasons);
+    const amountCheck = !ocrAmountCheckerEnabled
+      ? unavailableAmountCheck(aiCandidates, ["ocr_amount_checker_disabled", "manual_check_required"])
+      : ocrError
+        ? unavailableAmountCheck(aiCandidates, ["amount_scan_unavailable", "manual_check_required"])
+        : compareAmounts({
+            aiCandidates,
+            scannerCandidates: scanAmountCandidates(ocrRows)
+          });
+
+    persistScreenshotOrders({
+      batchId: screenshot.batch_id,
+      screenshot,
+      ocrRows,
+      sourceAppGuess,
+      normalizedOrders,
+      extractionEngine,
+      amountCheck,
+      attentionReasons
+    });
+
+    markScreenshotLlm(screenshotId, { status: "done", extractionEngine });
+  } catch (error: any) {
+    const message = error?.message || "Processing failed";
+    markScreenshotLlm(screenshotId, { status: "failed", extractionEngine, error: message });
+    markScreenshotProcessed(screenshotId, {
+      error: message,
+      sourceAppGuess: screenshot.source_app_guess,
+      extractionEngine
+    });
+    throw error;
+  }
+
+  return getBatchSummary(screenshot.batch_id);
 }

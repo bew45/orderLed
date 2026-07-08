@@ -12,7 +12,7 @@ console.log("[boot] db loaded (sqlite opened)");
 import { writeScreenshotImage, readStoredImage } from "./image-store";
 import { guessSourceAppFromText } from "./normalize";
 console.log("[boot] image-store/normalize loaded");
-import { processBatch, stopAllProcessing } from "./extraction/process";
+import { processBatch, processSingleScreenshot, stopAllProcessing } from "./extraction/process";
 console.log("[boot] extraction/process loaded");
 import {
   addScreenshot,
@@ -219,6 +219,14 @@ app.delete("/api/screenshots/:id", (req, res) => {
 app.post("/api/batches/:id/process", async (req, res) => {
   try {
     res.json({ summary: await processBatch(req.params.id, { force: Boolean(req.body?.force) }) });
+  } catch (error: any) {
+    res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+app.post("/api/screenshots/:id/process", async (req, res) => {
+  try {
+    res.json({ summary: await processSingleScreenshot(req.params.id) });
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
   }
