@@ -249,6 +249,7 @@ export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () =>
           </div>
           <ScreenshotList
             screenshots={screenshots}
+            orders={orders}
             onDelete={deleteScreenshot}
             onCheck={(screenshotId) => setCheckTarget({ screenshotId })}
             showOcr

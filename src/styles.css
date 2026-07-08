@@ -587,6 +587,10 @@
   color: var(--ink-faint);
 }
 
+.uploaded-shot-order-flags {
+  flex-wrap: wrap;
+}
+
 .uploaded-shot-actions {
   display: flex;
   flex-wrap: wrap;
@@ -783,4 +787,14 @@
   .import-stage-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Export screen — PDF action bar */
+.pdf-action-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
 }

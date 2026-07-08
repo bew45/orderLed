@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { endpoints, fmtMoney, parseAmountCheck, SOURCE_APP_LABEL, type AmountCheck, type OcrTextRow, type ScreenshotRow } from "../api";
+import { endpoints, fmtMoney, parseAmountCheck, SOURCE_APP_LABEL, type AmountCheck, type OcrTextRow, type OrderRow, type ScreenshotRow } from "../api";
 import { Badge, IconEdit, IconTrash, PrimaryButton } from "./ui";
 
 function issueClass(shot: ScreenshotRow) {
@@ -82,8 +82,18 @@ function moneyList(values: number[]) {
   return values.map((value) => `THB ${fmtMoney(value)}`).join(", ");
 }
 
+function orderScreenshotIds(order: OrderRow) {
+  try {
+    const ids = JSON.parse(order.source_screenshot_ids_json || "[]");
+    return Array.isArray(ids) ? ids.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function ScreenshotList(props: {
   screenshots: ScreenshotRow[];
+  orders?: OrderRow[];
   onDelete?: (id: string) => Promise<void>;
   onCheck?: (id: string) => void;
   limit?: number;
@@ -93,6 +103,17 @@ export function ScreenshotList(props: {
   const [deletingId, setDeletingId] = useState("");
   const [expandOverrides, setExpandOverrides] = useState<Record<string, boolean>>({});
   const screenshots = props.limit ? props.screenshots.slice(0, props.limit) : props.screenshots;
+  const ordersByScreenshot = useMemo(() => {
+    const map = new Map<string, OrderRow[]>();
+    for (const order of props.orders ?? []) {
+      for (const screenshotId of orderScreenshotIds(order)) {
+        const list = map.get(screenshotId) ?? [];
+        list.push(order);
+        map.set(screenshotId, list);
+      }
+    }
+    return map;
+  }, [props.orders]);
 
   function isExpanded(shot: ScreenshotRow) {
     const override = expandOverrides[shot.id];
@@ -148,6 +169,7 @@ export function ScreenshotList(props: {
           confirmDelete={confirmId === shot.id}
           deleting={deletingId === shot.id}
           showOcr={props.showOcr}
+          orders={ordersByScreenshot.get(shot.id) ?? []}
           expanded={props.showOcr ? isExpanded(shot) : true}
           onToggleExpand={props.showOcr ? () => toggleExpanded(shot) : undefined}
           onDelete={props.onDelete ? () => handleDelete(shot.id) : undefined}
@@ -160,6 +182,7 @@ export function ScreenshotList(props: {
 
 function ScreenshotCard(props: {
   shot: ScreenshotRow;
+  orders: OrderRow[];
   confirmDelete: boolean;
   deleting: boolean;
   showOcr?: boolean;
@@ -175,6 +198,9 @@ function ScreenshotCard(props: {
   const appLabel = SOURCE_APP_LABEL[props.shot.source_app_guess] ?? props.shot.source_app_guess ?? "Unknown";
   const expanded = props.expanded ?? true;
   const hasDetail = Boolean(props.showOcr) && (previewRows.length > 0 || (Boolean(amountCheck) && props.shot.processed_at > 0));
+  const refundedCount = props.orders.filter((order) => order.status === "refunded").length;
+  const cancelledCount = props.orders.filter((order) => order.status === "cancelled").length;
+  const needsCheckCount = props.orders.filter((order) => order.review_state === "needs_check").length;
 
   return (
     <article className={issueClass(props.shot)}>
@@ -201,6 +227,13 @@ function ScreenshotCard(props: {
           <span className="uploaded-shot-check-row">
             <Badge status={amountCheck.state} label={amountCheckLabel(amountCheck.state)} />
             <small>{amountCheck.aiAmounts.length} AI / {amountCheck.scannerAmounts.length} OCR</small>
+          </span>
+        )}
+        {(refundedCount > 0 || cancelledCount > 0 || needsCheckCount > 0) && (
+          <span className="uploaded-shot-check-row uploaded-shot-order-flags">
+            {refundedCount > 0 && <Badge status="refunded" label={`Refunded ${refundedCount}`} />}
+            {cancelledCount > 0 && <Badge status="cancelled" label={`Cancelled ${cancelledCount}`} />}
+            {needsCheckCount > 0 && <Badge status="needs_check" label={`Needs check ${needsCheckCount}`} />}
           </span>
         )}
         {props.shot.processed_at > 0 && engineLabel(props.shot.extraction_engine) && (

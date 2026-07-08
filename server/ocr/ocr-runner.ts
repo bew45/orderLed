@@ -1,4 +1,6 @@
 import { spawn } from "child_process";
+import { existsSync } from "fs";
+import { resolve, dirname, join } from "path";
 import { readStoredImage } from "../image-store";
 import { getAppSettings } from "../store";
 import type { OcrRow, Screenshot } from "../types";
@@ -21,6 +23,30 @@ function timeoutMs() {
   return Math.max(1000, Number(getAppSettings().paddle_timeout_ms ?? DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
 }
 
+function paddleEnv() {
+  const python = pythonCommand();
+  const env: Record<string, string> = {
+    ...process.env,
+    PYTHONIOENCODING: "utf-8",
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+  };
+
+  // If using the GPU environment from Muse, prepend the Nvidia DLL paths to PATH
+  if (python.toLowerCase().includes("muse-manga-ocr-gpu")) {
+    const venvRoot = resolve(dirname(python), "..");
+    const nvidiaBins = [
+      join(venvRoot, "Lib", "site-packages", "nvidia", "cu13", "bin", "x86_64"),
+      join(venvRoot, "Lib", "site-packages", "nvidia", "cudnn", "bin")
+    ].filter((p) => existsSync(p));
+
+    if (nvidiaBins.length > 0) {
+      env.PATH = [...nvidiaBins, process.env.PATH || ""].filter(Boolean).join(";");
+    }
+  }
+
+  return env;
+}
+
 let queue = Promise.resolve();
 
 export function runOcrQueued(screenshot: Screenshot, signal?: AbortSignal) {
@@ -38,10 +64,7 @@ async function runPaddleOcr(screenshot: Screenshot, signal?: AbortSignal): Promi
     const child = spawn(pythonCommand(), [helper, imagePath, "--lang", paddleLang(), "--device", paddleDevice()], {
       cwd: process.cwd(),
       windowsHide: true,
-      env: {
-        ...process.env,
-        PYTHONIOENCODING: "utf-8"
-      }
+      env: paddleEnv()
     });
     let stdout = "";
     let stderr = "";

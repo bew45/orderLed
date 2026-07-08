@@ -72,7 +72,14 @@ export function guessSourceAppFromText(text: string): SourceApp {
 
 export function normalizeOrderStatus(value: unknown, textHint = ""): OrderStatus {
   const raw = `${String(value ?? "")} ${textHint}`.toLowerCase();
-  if (raw.includes("คืนเงิน") || raw.includes("refund")) return "refunded";
+  const compact = raw.replace(/\s+/g, "");
+  if (
+    raw.includes("\u0e04\u0e37\u0e19\u0e40\u0e07\u0e34\u0e19") ||
+    compact.includes("\u0e04\u0e37\u0e19\u0e40\u0e07\u0e34\u0e19") ||
+    raw.includes("\u0e40\u0e07\u0e34\u0e19\u0e04\u0e37\u0e19") ||
+    compact.includes("\u0e40\u0e07\u0e34\u0e19\u0e04\u0e37\u0e19") ||
+    raw.includes("refund")
+  ) return "refunded";
   if (raw.includes("ยกเลิก") || raw.includes("cancelled") || raw.includes("canceled")) return "cancelled";
   if (raw.includes("completed") || raw.includes("สำเร็จ") || raw.includes("delivered")) return "completed";
   return "unknown";

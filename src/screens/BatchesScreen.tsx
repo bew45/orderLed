@@ -2,11 +2,43 @@ import React, { useState } from "react";
 import { endpoints, fmtMoney, type ScreenshotRow } from "../api";
 import { ScreenshotList } from "../components/ScreenshotList";
 import { useAppData } from "../state/AppData";
-import { EmptyState, IconExport, IconHistory, IconPlus, IconTrash, PrimaryButton } from "../components/ui";
+import { Alert, EmptyState, IconExport, IconHistory, IconPlus, IconTrash, PrimaryButton } from "../components/ui";
+
+async function fetchPdfBlob(url: string): Promise<Blob> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to generate PDF (${res.status})`);
+  return res.blob();
+}
+
+async function sharePdf(url: string, filename: string) {
+  const blob = await fetchPdfBlob(url);
+  const file = new File([blob], filename, { type: "application/pdf" });
+  // iPhone / Android — opens native share sheet (Save to Files, AirDrop, LINE, etc.)
+  if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+    await navigator.share({ title: "OrderLedger Invoice", files: [file] });
+    return;
+  }
+  // Desktop fallback — trigger a download
+  triggerDownload(blob, filename);
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: () => void }) {
   const { batches, activeBatchId, screenshots, selectBatch, deleteBatch, deleteScreenshot } = useAppData();
   const [confirmId, setConfirmId] = useState("");
+  const [exportingId, setExportingId] = useState("");
+  const [errorId, setErrorId] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   async function handleDelete(id: string) {
     if (confirmId !== id) {
@@ -56,14 +88,36 @@ export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: ()
                 <PrimaryButton
                   className="btn-sm"
                   variant="ghost"
-                  onClick={() => window.open(endpoints.exportUrl(batch.id, "pdf"), "_blank")}
+                  disabled={exportingId === batch.id}
+                  onClick={async () => {
+                    setExportingId(batch.id);
+                    setErrorId("");
+                    setErrorMsg("");
+                    try {
+                      const pdfUrl = endpoints.exportUrl(batch.id, "pdf");
+                      const pdfFilename = `orderledger-invoice-${batch.id}.pdf`;
+                      await sharePdf(pdfUrl, pdfFilename);
+                    } catch (err: any) {
+                      if (err?.name !== "AbortError") {
+                        setErrorId(batch.id);
+                        setErrorMsg(err?.message || "Failed to export PDF");
+                      }
+                    } finally {
+                      setExportingId("");
+                    }
+                  }}
                 >
-                  <IconExport size={14} /> Export PDF
+                  <IconExport size={14} /> {exportingId === batch.id ? "Exporting…" : "Export PDF"}
                 </PrimaryButton>
                 <PrimaryButton className="btn-sm" variant={confirmId === batch.id ? "danger" : "ghost"} onClick={() => handleDelete(batch.id)}>
                   <IconTrash size={14} /> {confirmId === batch.id ? "Confirm" : "Delete"}
                 </PrimaryButton>
               </div>
+              {errorId === batch.id && (
+                <div style={{ marginTop: "0.5rem" }}>
+                  <Alert variant="error" title="PDF error" message={errorMsg} onDismiss={() => setErrorId("")} />
+                </div>
+              )}
               {batch.id === activeBatchId && batch.summary.screenshotsTotal > 0 && (
                 <BatchScreenshotList
                   expectedCount={batch.summary.screenshotsTotal}
