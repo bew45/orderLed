@@ -295,14 +295,16 @@ export function upsertOrder(input: {
   );
   const ts = now();
   if (existing) {
-    const ids = new Set(parseJson<string[]>(existing.source_screenshot_ids_json, []));
+    const existingIds = parseJson<string[]>(existing.source_screenshot_ids_json, []);
+    const ids = new Set(existingIds);
     ids.add(input.sourceScreenshotId);
     const currentReviewState = normalizeReviewState(existing.review_state);
+    const hasOtherSource = existingIds.some((sourceId) => sourceId !== input.sourceScreenshotId);
     const reviewState: ReviewState = currentReviewState === "corrected"
       ? "corrected"
-      : input.reviewState === "needs_check" || currentReviewState === "needs_check"
+      : currentReviewState === "needs_check" && input.reviewState === "ok" && hasOtherSource
         ? "needs_check"
-        : "ok";
+        : input.reviewState;
     const shouldReplace = currentReviewState !== "corrected" && completenessScore(input) >= completenessScore(existing);
     db.prepare(`
       UPDATE orders SET

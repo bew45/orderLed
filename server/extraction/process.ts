@@ -13,7 +13,7 @@ import {
   markScreenshotProcessed,
   upsertOrder
 } from "../store";
-import type { AmountCandidate, AmountCheckState, OcrRow, ReviewState, Screenshot, SourceApp } from "../types";
+import type { AmountCandidate, AmountCheck, AmountCheckState, Batch, ExtractedOrder, OcrRow, ReviewState, Screenshot, SourceApp } from "../types";
 
 type OcrResult = {
   rows: OcrRow[];
@@ -25,6 +25,13 @@ type LlmResult = {
   result: Awaited<ReturnType<typeof extractWithOpenRouter>>;
   error: string;
   extractionEngine: string;
+  normalizedOrders: NormalizedOrder[];
+  aiCandidates: AmountCandidate[];
+};
+
+type NormalizedOrder = {
+  raw: ExtractedOrder & { screenOrder: number };
+  normalized: ReturnType<typeof normalizeExtractedOrder>;
 };
 
 let activeController: AbortController | null = null;
@@ -50,6 +57,21 @@ function sourceGuessFromOcr(screenshot: Screenshot, rows: OcrRow[]) {
   return guessed === "unknown" ? screenshot.source_app_guess : guessed;
 }
 
+function sourceGuessFromLlm(result: NonNullable<LlmResult["result"]>, fallback: SourceApp) {
+  const text = [
+    result.sourceApp,
+    ...result.orders.flatMap((order) => [
+      order.sourceApp,
+      order.restaurantName,
+      order.itemsText,
+      order.status,
+      order.orderedAt
+    ])
+  ].filter(Boolean).join("\n");
+  const guessed = guessSourceAppFromText(text);
+  return guessed === "unknown" ? (result.sourceApp ?? fallback) : guessed;
+}
+
 function unavailableAmountCheck(aiCandidates: AmountCandidate[], reasons: string[]) {
   const amountCheck = compareAmounts({ aiCandidates, scannerCandidates: [] });
   amountCheck.state = "unavailable";
@@ -57,6 +79,90 @@ function unavailableAmountCheck(aiCandidates: AmountCandidate[], reasons: string
     if (!amountCheck.reasons.includes(reason)) amountCheck.reasons.push(reason);
   }
   return amountCheck;
+}
+
+function normalizeLlmOrders(batch: Batch, result: NonNullable<LlmResult["result"]>, sourceAppGuess: SourceApp): NormalizedOrder[] {
+  return result.orders
+    .map((order, index) => ({
+      raw: {
+        ...order,
+        screenOrder: Number.isFinite(Number(order.screenOrder)) && Number(order.screenOrder) > 0
+          ? Number(order.screenOrder)
+          : index + 1
+      },
+      normalized: normalizeExtractedOrder(order, {
+        month: batch.month,
+        sourceApp: order.sourceApp ?? result.sourceApp ?? sourceAppGuess
+      })
+    }))
+    .filter(({ normalized }) => normalized.restaurantName || normalized.totalAmount > 0)
+    .sort((a, b) => Number(a.raw.screenOrder) - Number(b.raw.screenOrder));
+}
+
+function aiCandidatesFromOrders(normalizedOrders: NormalizedOrder[]) {
+  return normalizedOrders
+    .filter(({ normalized }) => normalized.totalAmount > 0)
+    .map(({ normalized }) => ({ amount: normalized.totalAmount, text: normalized.restaurantName || "AI amount" }));
+}
+
+function persistScreenshotOrders(input: {
+  batchId: string;
+  screenshot: Screenshot;
+  sourceAppGuess: SourceApp;
+  normalizedOrders: NormalizedOrder[];
+  amountCheck: AmountCheck;
+  extractionEngine: string;
+  ocrRows?: OcrRow[];
+  error?: string;
+}) {
+  if (input.error) {
+    markScreenshotProcessed(input.screenshot.id, {
+      error: input.error,
+      ocrRows: input.ocrRows,
+      sourceAppGuess: input.sourceAppGuess,
+      extractionEngine: input.extractionEngine
+    });
+    return;
+  }
+
+  const reviewState = reviewStateFromAmountCheck(input.amountCheck.state);
+  let extractedOrderCount = 0;
+
+  for (const { raw, normalized } of input.normalizedOrders) {
+    upsertOrder({
+      batchId: input.batchId,
+      sourceApp: normalized.sourceApp,
+      orderedAt: normalized.orderedAt,
+      restaurantName: normalized.restaurantName,
+      totalAmount: normalized.totalAmount,
+      status: normalized.status,
+      refundAmount: normalized.refundAmount,
+      netAmount: normalized.netAmount,
+      itemsText: normalized.itemsText,
+      reviewState,
+      duplicateKey: normalized.duplicateKey,
+      sourceScreenshotId: input.screenshot.id,
+      evidence: {
+        screenOrder: raw.screenOrder,
+        amountCheck: {
+          state: input.amountCheck.state,
+          reasons: input.amountCheck.reasons,
+          aiAmounts: input.amountCheck.aiAmounts,
+          scannerAmounts: input.amountCheck.scannerAmounts
+        }
+      }
+    });
+    extractedOrderCount += 1;
+  }
+
+  markScreenshotProcessed(input.screenshot.id, {
+    error: "",
+    ocrRows: input.ocrRows,
+    sourceAppGuess: input.sourceAppGuess,
+    extractedOrderCount,
+    extractionEngine: input.extractionEngine,
+    amountCheck: input.amountCheck
+  });
 }
 
 export async function processBatch(batchId: string, opts: { force?: boolean } = {}) {
@@ -95,12 +201,31 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
         if (!result) {
           throw new Error("OpenRouter API key is required to extract orders.");
         }
+        const sourceAppGuess = sourceGuessFromLlm(result, screenshot.source_app_guess);
+        const normalizedOrders = normalizeLlmOrders(batch, result, sourceAppGuess);
+        const aiCandidates = aiCandidatesFromOrders(normalizedOrders);
+        const pendingAmountCheck = ocrAmountCheckerEnabled
+          ? unavailableAmountCheck(aiCandidates, ["amount_scan_pending"])
+          : unavailableAmountCheck(aiCandidates, ["ocr_amount_checker_disabled", "manual_check_required"]);
+        persistScreenshotOrders({
+          batchId,
+          screenshot,
+          sourceAppGuess,
+          normalizedOrders,
+          amountCheck: pendingAmountCheck,
+          extractionEngine
+        });
         markScreenshotLlm(screenshot.id, { status: "done", extractionEngine });
-        return [screenshot.id, { result, error: "", extractionEngine }];
+        return [screenshot.id, { result, error: "", extractionEngine, normalizedOrders, aiCandidates }];
       } catch (error: any) {
         const message = stoppedError(error);
         markScreenshotLlm(screenshot.id, { status: "failed", extractionEngine, error: message });
-        return [screenshot.id, { result: null, error: message, extractionEngine }];
+        markScreenshotProcessed(screenshot.id, {
+          error: message,
+          sourceAppGuess: screenshot.source_app_guess,
+          extractionEngine
+        });
+        return [screenshot.id, { result: null, error: message, extractionEngine, normalizedOrders: [], aiCandidates: [] }];
       }
     });
 
@@ -156,70 +281,21 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
           throw new Error(llm?.error || "LLM extraction failed");
         }
 
-        const normalizedOrders = llm.result.orders
-          .map((order, index) => ({
-            raw: {
-              ...order,
-              screenOrder: Number.isFinite(Number(order.screenOrder)) && Number(order.screenOrder) > 0
-                ? Number(order.screenOrder)
-                : index + 1
-            },
-            normalized: normalizeExtractedOrder(order, {
-              month: batch.month,
-              sourceApp: order.sourceApp ?? llm.result?.sourceApp ?? ocr.sourceAppGuess
-            })
-          }))
-          .filter(({ normalized }) => normalized.restaurantName || normalized.totalAmount > 0)
-          .sort((a, b) => Number(a.raw.screenOrder) - Number(b.raw.screenOrder));
-
-        const aiCandidates: AmountCandidate[] = normalizedOrders
-          .filter(({ normalized }) => normalized.totalAmount > 0)
-          .map(({ normalized }) => ({ amount: normalized.totalAmount, text: normalized.restaurantName || "AI amount" }));
-
         const amountCheck = !ocrAmountCheckerEnabled
-          ? unavailableAmountCheck(aiCandidates, ["ocr_amount_checker_disabled", "manual_check_required"])
+          ? unavailableAmountCheck(llm.aiCandidates, ["ocr_amount_checker_disabled", "manual_check_required"])
           : ocr.error
-            ? unavailableAmountCheck(aiCandidates, ["amount_scan_unavailable", "manual_check_required"])
+            ? unavailableAmountCheck(llm.aiCandidates, ["amount_scan_unavailable", "manual_check_required"])
             : compareAmounts({
-                aiCandidates,
+                aiCandidates: llm.aiCandidates,
                 scannerCandidates: scanAmountCandidates(ocr.rows)
               });
 
-        const reviewState = reviewStateFromAmountCheck(amountCheck.state);
-        let extractedOrderCount = 0;
-
-        for (const { raw, normalized } of normalizedOrders) {
-          upsertOrder({
-            batchId,
-            sourceApp: normalized.sourceApp,
-            orderedAt: normalized.orderedAt,
-            restaurantName: normalized.restaurantName,
-            totalAmount: normalized.totalAmount,
-            status: normalized.status,
-            refundAmount: normalized.refundAmount,
-            netAmount: normalized.netAmount,
-            itemsText: normalized.itemsText,
-            reviewState,
-            duplicateKey: normalized.duplicateKey,
-            sourceScreenshotId: screenshot.id,
-            evidence: {
-              screenOrder: raw.screenOrder,
-              amountCheck: {
-                state: amountCheck.state,
-                reasons: amountCheck.reasons,
-                aiAmounts: amountCheck.aiAmounts,
-                scannerAmounts: amountCheck.scannerAmounts
-              }
-            }
-          });
-          extractedOrderCount += 1;
-        }
-
-        markScreenshotProcessed(screenshot.id, {
-          error: "",
+        persistScreenshotOrders({
+          batchId,
+          screenshot,
           ocrRows: ocr.rows,
           sourceAppGuess: ocr.sourceAppGuess,
-          extractedOrderCount,
+          normalizedOrders: llm.normalizedOrders,
           extractionEngine: llm.extractionEngine,
           amountCheck
         });

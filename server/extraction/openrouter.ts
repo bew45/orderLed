@@ -55,6 +55,7 @@ export async function extractWithOpenRouter(input: {
     "- grab: header text \"Activity History\"; filter chips are solid stadium pills (dark green when selected, mint green when not) labelled things like Transport/Food/Mart/Dine Out/Finance; order rows may show \"+N GrabCoins\"; app-wide accent color is green.",
     "- lineman: header text \"Order History\"; three tabs Ongoing / Completed / Canceled or Failed with a green underline on the active tab; filter chips are outlined (not filled) pills labelled Food Delivery/Mart/Messenger/Ride; green \"Order completed\" status text; app-wide accent color is green.",
     "- shopeefood: app-wide accent color is orange/red (buttons, active tab underline, icons all orange); Thai header \"คำสั่งซื้อของฉัน\"; two tabs \"คำสั่งซื้ออาหาร\" / \"ดีลล็อกราคา\"; status text \"จัดส่งสำเร็จแล้ว\"; orange button \"สั่งใหม่\".",
+    "- If the whole order-history page is Thai-only with no visible English app/navigation labels, prefer shopeefood over unknown.",
     "If the screenshot is mostly orange/red, it is shopeefood. If green, use the header text and tab labels above to tell grab and lineman apart. Only return unknown if truly no cues match.",
     "Each visible order card should become one order.",
     "Ignore navigation, battery banners, tabs, reorder buttons, ratings, and decorative text.",

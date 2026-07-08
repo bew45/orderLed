@@ -66,6 +66,7 @@ export function guessSourceAppFromText(text: string): SourceApp {
     raw.includes("food delivery") ||
     (raw.includes("ongoing") && (raw.includes("canceled") || raw.includes("cancelled")))
   ) return "lineman";
+  if (/[\u0E00-\u0E7F]/u.test(raw) && !/[A-Za-z]/.test(raw)) return "shopeefood";
   return "unknown";
 }
 
