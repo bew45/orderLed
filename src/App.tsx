@@ -62,7 +62,7 @@ function Shell() {
       )}
       {tab === "export" && <ExportScreen />}
 
-      <TabBar active={tab} attentionCount={allOrders.filter((order) => order.review_state === "needs_review").length} onSelect={setTab} />
+      <TabBar active={tab} attentionCount={allOrders.filter((order) => order.review_state === "needs_check").length} onSelect={setTab} />
 
       {uploadOpen && (
         <UploadFlow

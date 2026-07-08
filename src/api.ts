@@ -30,11 +30,32 @@ export type OrderRow = {
   refund_amount: number;
   net_amount: number;
   items_text: string;
-  confidence: number;
-  review_state: "ok" | "needs_review" | "corrected";
+  review_state: "ok" | "needs_check" | "corrected";
   duplicate_key: string;
   source_screenshot_ids_json: string;
   evidence_json: string;
+};
+
+export type AmountCheckState = "not_checked" | "matched" | "mismatch" | "unavailable";
+
+export type AmountCandidate = {
+  amount: number;
+  text: string;
+  rowId?: string;
+  bbox?: { x: number; y: number; w: number; h: number };
+};
+
+export type AmountCheck = {
+  state: AmountCheckState;
+  aiAmounts: number[];
+  scannerAmounts: number[];
+  missingFromAi: number[];
+  missingFromScanner: number[];
+  sumAi: number;
+  sumScanner: number;
+  reasons: string[];
+  aiCandidates: AmountCandidate[];
+  scannerCandidates: AmountCandidate[];
 };
 
 export type ScreenshotRow = {
@@ -50,6 +71,8 @@ export type ScreenshotRow = {
   ocr_line_count: number;
   extracted_order_count: number;
   extraction_engine: string;
+  amount_check_state: AmountCheckState;
+  amount_check_json: string;
   processed_at: number;
   error: string;
   created_at: number;

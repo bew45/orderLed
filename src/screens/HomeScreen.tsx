@@ -47,7 +47,7 @@ function summarizeOrders(orders: OrderRow[]) {
     netSpend,
     completedSpend,
     ordersTotal: orders.length,
-    needsCheck: orders.filter((order) => order.review_state === "needs_review").length
+    needsCheck: orders.filter((order) => order.review_state === "needs_check").length
   };
 }
 

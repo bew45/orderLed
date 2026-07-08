@@ -4,21 +4,15 @@ import { useAppData } from "../state/AppData";
 import { Badge, EmptyState, IconInbox } from "../components/ui";
 import { OrderSheet } from "../components/OrderSheet";
 
-const REVIEW_ORDER: Record<string, number> = { needs_review: 0, corrected: 1, ok: 2 };
-
-function confidenceColor(confidence: number): string {
-  if (confidence >= 85) return "var(--ok)";
-  if (confidence >= 60) return "var(--review)";
-  return "var(--danger)";
-}
+const REVIEW_ORDER: Record<string, number> = { needs_check: 0, corrected: 1, ok: 2 };
 
 export function ReviewScreen() {
   const { orders, activeBatch } = useAppData();
-  const [filter, setFilter] = useState<"all" | "needs_review">("all");
+  const [filter, setFilter] = useState<"all" | "needs_check">("all");
   const [openOrderId, setOpenOrderId] = useState<string>("");
 
   const sorted = useMemo(() => {
-    const list = filter === "needs_review" ? orders.filter((o) => o.review_state === "needs_review") : orders;
+    const list = filter === "needs_check" ? orders.filter((o) => o.review_state === "needs_check") : orders;
     return [...list].sort((a, b) => (REVIEW_ORDER[a.review_state] ?? 3) - (REVIEW_ORDER[b.review_state] ?? 3));
   }, [orders, filter]);
 
@@ -36,7 +30,7 @@ export function ReviewScreen() {
         <h2 className="screen-title">Review</h2>
         <div className="chip-row">
           <button className={filter === "all" ? "chip active" : "chip"} onClick={() => setFilter("all")}>All</button>
-          <button className={filter === "needs_review" ? "chip active" : "chip"} onClick={() => setFilter("needs_review")}>Needs review</button>
+          <button className={filter === "needs_check" ? "chip active" : "chip"} onClick={() => setFilter("needs_check")}>Needs check</button>
         </div>
       </div>
 
@@ -44,7 +38,7 @@ export function ReviewScreen() {
         <EmptyState
           icon={<IconInbox size={24} />}
           title="Nothing to review"
-          body={filter === "needs_review" ? "No rows currently need review." : "Upload and process screenshots to see orders here."}
+          body={filter === "needs_check" ? "No rows currently need checking." : "Upload and process screenshots to see orders here."}
         />
       ) : (
         <div className="stack">
@@ -80,15 +74,6 @@ function OrderRowCard(props: { order: OrderRow; onOpen: () => void }) {
       </div>
       <div className="order-row-row3">
         <Badge status={order.review_state !== "ok" ? order.review_state : order.status} />
-        <span className="confidence">
-          <span className="confidence-bar">
-            <span
-              className="confidence-fill"
-              style={{ width: `${Math.round((order.confidence || 0) * 100)}%`, background: confidenceColor((order.confidence || 0) * 100) }}
-            />
-          </span>
-          {Math.round((order.confidence || 0) * 100)}%
-        </span>
       </div>
     </button>
   );

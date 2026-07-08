@@ -27,7 +27,7 @@ function summarizeOrders(orders: OrderRow[]) {
     completedSpend: Math.round(completedSpend * 100) / 100,
     refundedOrCancelled: Math.round((completedSpend - netSpend) * 100) / 100,
     ordersTotal: orders.length,
-    ordersNeedingReview: orders.filter((o) => o.review_state === "needs_review").length
+    ordersNeedingReview: orders.filter((o) => o.review_state === "needs_check").length
   };
 }
 
@@ -42,8 +42,7 @@ function orderRows(orders: OrderRow[]) {
     "Refund Amount": order.refund_amount,
     "Net Amount": order.net_amount,
     Items: order.items_text,
-    Confidence: order.confidence,
-    Review: order.review_state
+    "Check State": order.review_state
   }));
 }
 
@@ -75,7 +74,7 @@ export function buildExcelExport(batchId: string, opts: { month?: string } = {})
     { Metric: "Completed spend", Value: summary.completedSpend },
     { Metric: "Refunded or cancelled", Value: summary.refundedOrCancelled },
     { Metric: "Order count", Value: summary.ordersTotal },
-    { Metric: "Needs review", Value: summary.ordersNeedingReview }
+    { Metric: "Needs check", Value: summary.ordersNeedingReview }
   ];
 
   const byApp = new Map<string, { App: string; Count: number; Net: number; Completed: number }>();
@@ -172,7 +171,7 @@ export async function buildPdfExport(batchId: string, opts: { month?: string } =
     doc.fillColor("#111").fontSize(12).text(`Net spend: ${summary.netSpend.toFixed(2)} THB`);
     doc.text(`Completed spend: ${summary.completedSpend.toFixed(2)} THB`);
     doc.text(`Orders: ${summary.ordersTotal}`);
-    doc.text(`Needs review: ${summary.ordersNeedingReview}`);
+    doc.text(`Needs check: ${summary.ordersNeedingReview}`);
     doc.moveDown();
     doc.fontSize(10);
     for (const order of orders.slice(0, 120)) {

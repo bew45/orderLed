@@ -144,9 +144,13 @@ export function Badge(props: { status: string; label?: string }) {
     cancelled: "Cancelled",
     refunded: "Refunded",
     unknown: "Unknown",
-    needs_review: "Needs review",
+    needs_check: "Needs check",
     corrected: "Corrected",
-    ok: "OK"
+    ok: "OK",
+    matched: "Numbers matched",
+    mismatch: "Needs check",
+    unavailable: "Not verified",
+    not_checked: "Not checked"
   };
   return (
     <span className={`badge badge--${props.status}`}>

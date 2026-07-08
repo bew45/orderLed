@@ -84,7 +84,7 @@ export function OrderSheet(props: { orderId: string; onClose: () => void }) {
 
         <div className="card-title-row">
           <Badge status={merged.review_state} />
-          <span className="screen-subtitle">confidence {Math.round((merged.confidence || 0) * 100)}%</span>
+          <span className="screen-subtitle">Amount check based</span>
         </div>
 
         {screenshotId && (

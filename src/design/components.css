@@ -287,7 +287,11 @@
 .badge--cancelled { background: var(--danger-soft); color: var(--danger); }
 .badge--refunded { background: var(--refund-soft); color: var(--refund); }
 .badge--unknown { background: var(--unknown-soft); color: var(--unknown); }
-.badge--needs_review { background: var(--review-soft); color: var(--review); }
+.badge--needs_check,
+.badge--mismatch { background: var(--review-soft); color: var(--review); }
+.badge--matched { background: var(--ok-soft); color: var(--ok); }
+.badge--unavailable,
+.badge--not_checked { background: var(--unknown-soft); color: var(--unknown); }
 .badge--corrected { background: var(--corrected-soft); color: var(--corrected); }
 
 /* ---------- Alerts ---------- */
@@ -646,7 +650,7 @@
   width: 3px;
 }
 
-.order-row.needs_review::before { background: var(--review); }
+.order-row.needs_check::before { background: var(--review); }
 .order-row.corrected::before { background: var(--corrected); }
 .order-row.ok::before { background: var(--ok); }
 
@@ -705,27 +709,6 @@
   justify-content: space-between;
   gap: 0.5rem;
   margin-top: 5px;
-}
-
-.confidence {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-}
-
-.confidence-bar {
-  width: 40px;
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-sunken);
-  overflow: hidden;
-}
-
-.confidence-fill {
-  height: 100%;
-  border-radius: var(--radius-pill);
 }
 
 /* ---------- Batch card (history) ---------- */

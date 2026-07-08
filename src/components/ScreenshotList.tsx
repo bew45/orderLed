@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { endpoints, SOURCE_APP_LABEL, type OcrTextRow, type ScreenshotRow } from "../api";
+import { endpoints, fmtMoney, SOURCE_APP_LABEL, type AmountCheck, type OcrTextRow, type ScreenshotRow } from "../api";
 import { Badge, IconTrash, PrimaryButton } from "./ui";
 
 function parseOcrRows(value: string): OcrTextRow[] {
@@ -8,6 +8,27 @@ function parseOcrRows(value: string): OcrTextRow[] {
     return Array.isArray(rows) ? rows.filter((row) => row && typeof row.text === "string") : [];
   } catch {
     return [];
+  }
+}
+
+function parseAmountCheck(value: string): AmountCheck | null {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    if (!parsed || typeof parsed !== "object" || typeof parsed.state !== "string") return null;
+    return {
+      state: parsed.state,
+      aiAmounts: Array.isArray(parsed.aiAmounts) ? parsed.aiAmounts.map(Number).filter(Number.isFinite) : [],
+      scannerAmounts: Array.isArray(parsed.scannerAmounts) ? parsed.scannerAmounts.map(Number).filter(Number.isFinite) : [],
+      missingFromAi: Array.isArray(parsed.missingFromAi) ? parsed.missingFromAi.map(Number).filter(Number.isFinite) : [],
+      missingFromScanner: Array.isArray(parsed.missingFromScanner) ? parsed.missingFromScanner.map(Number).filter(Number.isFinite) : [],
+      sumAi: Number(parsed.sumAi || 0),
+      sumScanner: Number(parsed.sumScanner || 0),
+      reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(String) : [],
+      aiCandidates: Array.isArray(parsed.aiCandidates) ? parsed.aiCandidates : [],
+      scannerCandidates: Array.isArray(parsed.scannerCandidates) ? parsed.scannerCandidates : []
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -22,6 +43,18 @@ function engineLabel(engine: string) {
   if (engine.startsWith("openrouter:")) return `OpenRouter · ${engine.slice("openrouter:".length)}`;
   if (engine === "heuristics") return "OCR heuristics";
   return engine;
+}
+
+function amountCheckLabel(state: string) {
+  if (state === "matched") return "Numbers matched";
+  if (state === "mismatch") return "Needs check";
+  if (state === "unavailable") return "Not verified";
+  return "Not checked";
+}
+
+function moneyList(values: number[]) {
+  if (values.length === 0) return "none";
+  return values.map((value) => `THB ${fmtMoney(value)}`).join(", ");
 }
 
 export function ScreenshotList(props: {
@@ -77,6 +110,7 @@ function ScreenshotCard(props: {
   onDelete?: () => void;
 }) {
   const rows = useMemo(() => parseOcrRows(props.shot.ocr_text_json), [props.shot.ocr_text_json]);
+  const amountCheck = useMemo(() => parseAmountCheck(props.shot.amount_check_json), [props.shot.amount_check_json]);
   const status = shotStatus(props.shot);
   const previewRows = rows.slice(0, 5);
   const appLabel = SOURCE_APP_LABEL[props.shot.source_app_guess] ?? props.shot.source_app_guess ?? "Unknown";
@@ -97,6 +131,12 @@ function ScreenshotCard(props: {
           <small>{props.shot.ocr_line_count || rows.length} OCR lines</small>
           <small>{props.shot.extracted_order_count || 0} rows</small>
         </span>
+        {props.shot.processed_at > 0 && amountCheck && (
+          <span className="uploaded-shot-check-row">
+            <Badge status={amountCheck.state} label={amountCheckLabel(amountCheck.state)} />
+            <small>{amountCheck.aiAmounts.length} AI / {amountCheck.scannerAmounts.length} OCR</small>
+          </span>
+        )}
         {props.shot.processed_at > 0 && engineLabel(props.shot.extraction_engine) && (
           <small className="uploaded-shot-engine">Read with {engineLabel(props.shot.extraction_engine)}</small>
         )}
@@ -119,6 +159,10 @@ function ScreenshotCard(props: {
         )}
       </span>
 
+      {props.showOcr && amountCheck && props.shot.processed_at > 0 && (
+        <AmountCheckPanel check={amountCheck} />
+      )}
+
       {props.showOcr && previewRows.length > 0 && (
         <div className="uploaded-shot-ocr">
           <div className="uploaded-shot-ocr-head">
@@ -136,5 +180,50 @@ function ScreenshotCard(props: {
         </div>
       )}
     </article>
+  );
+}
+
+function AmountCheckPanel(props: { check: AmountCheck }) {
+  const { check } = props;
+  const title = check.state === "matched"
+    ? `${check.aiAmounts.length} amount${check.aiAmounts.length === 1 ? "" : "s"} matched`
+    : check.state === "mismatch"
+      ? "Amount mismatch"
+      : "Amount check unavailable";
+  return (
+    <div className={`amount-check-panel amount-check-panel--${check.state}`}>
+      <div className="amount-check-head">
+        <strong>{title}</strong>
+        <span>AI THB {fmtMoney(check.sumAi)} / OCR THB {fmtMoney(check.sumScanner)}</span>
+      </div>
+      <div className="amount-check-grid">
+        <AmountList title="AI orders" values={check.aiAmounts} />
+        <AmountList title="OCR screen" values={check.scannerAmounts} />
+      </div>
+      {(check.missingFromAi.length > 0 || check.missingFromScanner.length > 0) && (
+        <div className="amount-check-missing">
+          {check.missingFromAi.length > 0 && <span>Missing from AI: {moneyList(check.missingFromAi)}</span>}
+          {check.missingFromScanner.length > 0 && <span>Missing from OCR: {moneyList(check.missingFromScanner)}</span>}
+        </div>
+      )}
+      {check.reasons.length > 0 && (
+        <div className="amount-check-reasons">{check.reasons.join(" / ")}</div>
+      )}
+    </div>
+  );
+}
+
+function AmountList(props: { title: string; values: number[] }) {
+  return (
+    <div className="amount-check-list">
+      <span>{props.title}</span>
+      {props.values.length === 0 ? (
+        <small>None</small>
+      ) : (
+        props.values.map((value, index) => (
+          <small key={`${props.title}-${index}-${value}`}><b>{index + 1}.</b> THB {fmtMoney(value)}</small>
+        ))
+      )}
+    </div>
   );
 }

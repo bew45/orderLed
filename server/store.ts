@@ -1,7 +1,7 @@
 import { db, now, uuid } from "./db";
 import { deleteStoredImage } from "./image-store";
 import { json, parseJson } from "./json";
-import type { AppSettings, Batch, BatchSummary, OcrRow, OrderRow, ReviewState, Screenshot, SourceApp } from "./types";
+import type { AmountCheck, AppSettings, Batch, BatchSummary, OcrRow, OrderRow, ReviewState, Screenshot, SourceApp } from "./types";
 
 function one<T>(value: unknown) {
   return value as T | undefined;
@@ -57,6 +57,8 @@ export function addScreenshot(input: {
     ocr_line_count: 0,
     extracted_order_count: 0,
     extraction_engine: "",
+    amount_check_state: "not_checked",
+    amount_check_json: "{}",
     processed_at: 0,
     error: "",
     created_at: ts,
@@ -64,8 +66,8 @@ export function addScreenshot(input: {
   };
   db.prepare(`
     INSERT INTO screenshots
-      (id, batch_id, original_name, storage_path, content_hash, source_app_guess, width, height, ocr_text_json, ocr_line_count, extracted_order_count, extraction_engine, processed_at, error, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, batch_id, original_name, storage_path, content_hash, source_app_guess, width, height, ocr_text_json, ocr_line_count, extracted_order_count, extraction_engine, amount_check_state, amount_check_json, processed_at, error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     screenshot.id,
     screenshot.batch_id,
@@ -79,6 +81,8 @@ export function addScreenshot(input: {
     screenshot.ocr_line_count,
     screenshot.extracted_order_count,
     screenshot.extraction_engine,
+    screenshot.amount_check_state,
+    screenshot.amount_check_json,
     screenshot.processed_at,
     screenshot.error,
     screenshot.created_at,
@@ -125,7 +129,7 @@ export function clearScreenshotExtraction(id: string) {
   if (!shot) return;
   const ts = now();
   removeScreenshotOrderReferences(id, shot.batch_id, ts);
-  db.prepare("UPDATE screenshots SET extracted_order_count=0, updated_at=? WHERE id=?").run(ts, id);
+  db.prepare("UPDATE screenshots SET extracted_order_count=0, amount_check_state='not_checked', amount_check_json='{}', updated_at=? WHERE id=?").run(ts, id);
   touchBatch(shot.batch_id);
 }
 
@@ -150,6 +154,7 @@ export function markScreenshotProcessed(id: string, input: {
   sourceAppGuess?: SourceApp;
   extractedOrderCount?: number;
   extractionEngine?: string;
+  amountCheck?: AmountCheck;
 } = {}) {
   const ts = now();
   const error = input.error ?? "";
@@ -161,6 +166,8 @@ export function markScreenshotProcessed(id: string, input: {
       ocr_line_count=?,
       extracted_order_count=?,
       extraction_engine=?,
+      amount_check_state=?,
+      amount_check_json=?,
       processed_at=?,
       error=?,
       updated_at=?
@@ -171,6 +178,8 @@ export function markScreenshotProcessed(id: string, input: {
     input.ocrRows?.length ?? current?.ocr_line_count ?? 0,
     input.extractedOrderCount ?? current?.extracted_order_count ?? 0,
     input.extractionEngine ?? current?.extraction_engine ?? "",
+    input.amountCheck?.state ?? current?.amount_check_state ?? "not_checked",
+    input.amountCheck ? json(input.amountCheck) : current?.amount_check_json ?? "{}",
     error ? 0 : ts,
     error,
     ts,
@@ -189,7 +198,6 @@ export function upsertOrder(input: {
   refundAmount: number;
   netAmount: number;
   itemsText: string;
-  confidence: number;
   reviewState: ReviewState;
   duplicateKey: string;
   sourceScreenshotId: string;
@@ -202,12 +210,13 @@ export function upsertOrder(input: {
   if (existing) {
     const ids = new Set(parseJson<string[]>(existing.source_screenshot_ids_json, []));
     ids.add(input.sourceScreenshotId);
-    const reviewState: ReviewState = existing.review_state === "corrected"
+    const currentReviewState = normalizeReviewState(existing.review_state);
+    const reviewState: ReviewState = currentReviewState === "corrected"
       ? "corrected"
-      : input.reviewState === "needs_review" || existing.review_state === "needs_review"
-        ? "needs_review"
+      : input.reviewState === "needs_check" || currentReviewState === "needs_check"
+        ? "needs_check"
         : "ok";
-    const shouldReplace = input.confidence > existing.confidence;
+    const shouldReplace = currentReviewState !== "corrected" && completenessScore(input) >= completenessScore(existing);
     db.prepare(`
       UPDATE orders SET
         source_app=?,
@@ -218,7 +227,6 @@ export function upsertOrder(input: {
         refund_amount=?,
         net_amount=?,
         items_text=?,
-        confidence=?,
         review_state=?,
         source_screenshot_ids_json=?,
         evidence_json=?,
@@ -233,7 +241,6 @@ export function upsertOrder(input: {
       shouldReplace ? input.refundAmount : existing.refund_amount,
       shouldReplace ? input.netAmount : existing.net_amount,
       shouldReplace ? input.itemsText : existing.items_text,
-      Math.max(input.confidence, existing.confidence),
       reviewState,
       json([...ids]),
       shouldReplace ? json(input.evidence) : existing.evidence_json,
@@ -254,7 +261,6 @@ export function upsertOrder(input: {
     refund_amount: input.refundAmount,
     net_amount: input.netAmount,
     items_text: input.itemsText,
-    confidence: input.confidence,
     review_state: input.reviewState,
     duplicate_key: input.duplicateKey,
     source_screenshot_ids_json: json([input.sourceScreenshotId]),
@@ -264,8 +270,8 @@ export function upsertOrder(input: {
   };
   db.prepare(`
     INSERT INTO orders
-      (id, batch_id, source_app, ordered_at, restaurant_name, total_amount, status, refund_amount, net_amount, items_text, confidence, review_state, duplicate_key, source_screenshot_ids_json, evidence_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, batch_id, source_app, ordered_at, restaurant_name, total_amount, status, refund_amount, net_amount, items_text, review_state, duplicate_key, source_screenshot_ids_json, evidence_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     order.id,
     order.batch_id,
@@ -277,7 +283,6 @@ export function upsertOrder(input: {
     order.refund_amount,
     order.net_amount,
     order.items_text,
-    order.confidence,
     order.review_state,
     order.duplicate_key,
     order.source_screenshot_ids_json,
@@ -314,12 +319,11 @@ export function updateOrder(id: string, patch: Partial<OrderRow>) {
     refund_amount: Number(patch.refund_amount ?? current.refund_amount),
     net_amount: Number(patch.net_amount ?? current.net_amount),
     items_text: patch.items_text ?? current.items_text,
-    confidence: Number(patch.confidence ?? current.confidence),
     review_state: "corrected" as ReviewState,
     updated_at: now()
   };
   db.prepare(`
-    UPDATE orders SET source_app=?, ordered_at=?, restaurant_name=?, total_amount=?, status=?, refund_amount=?, net_amount=?, items_text=?, confidence=?, review_state=?, updated_at=?
+    UPDATE orders SET source_app=?, ordered_at=?, restaurant_name=?, total_amount=?, status=?, refund_amount=?, net_amount=?, items_text=?, review_state=?, updated_at=?
     WHERE id=?
   `).run(
     next.source_app,
@@ -330,7 +334,6 @@ export function updateOrder(id: string, patch: Partial<OrderRow>) {
     next.refund_amount,
     next.net_amount,
     next.items_text,
-    next.confidence,
     next.review_state,
     next.updated_at,
     id
@@ -357,11 +360,32 @@ export function getBatchSummary(batchId: string): BatchSummary {
     screenshotsProcessed: shots.filter((s) => s.processed_at > 0).length,
     screenshotsFailed: shots.filter((s) => s.error).length,
     ordersTotal: orders.length,
-    ordersNeedingReview: orders.filter((o) => o.review_state === "needs_review").length,
+    ordersNeedingReview: orders.filter((o) => normalizeReviewState(o.review_state) === "needs_check").length,
     netSpend: Math.round(netSpend * 100) / 100,
     completedSpend: Math.round(completedSpend * 100) / 100,
     refundedOrCancelled: Math.round((completedSpend - netSpend) * 100) / 100
   };
+}
+
+function normalizeReviewState(value: unknown): ReviewState {
+  return value === "corrected" ? "corrected" : value === "ok" ? "ok" : "needs_check";
+}
+
+function completenessScore(order: {
+  restaurantName?: string;
+  restaurant_name?: string;
+  orderedAt?: string;
+  ordered_at?: string;
+  totalAmount?: number;
+  total_amount?: number;
+  status?: string;
+}) {
+  let score = 0;
+  if (String(order.restaurantName ?? order.restaurant_name ?? "").trim()) score += 2;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(order.orderedAt ?? order.ordered_at ?? ""))) score += 2;
+  if (Number(order.totalAmount ?? order.total_amount ?? 0) > 0) score += 3;
+  if (String(order.status ?? "") !== "unknown") score += 1;
+  return score;
 }
 
 function touchBatch(id: string) {

@@ -69,7 +69,7 @@ export async function extractWithOpenRouter(input: {
     "For cancelled/refunded Thai text, watch for: คำสั่งซื้อถูกยกเลิกแล้ว, คืนเงิน, ยกเลิก.",
     "Use OCR rows as anchors, but trust the image if OCR is noisy.",
     "If OCR rows are empty, read the screenshot directly from the image.",
-    "If a value is unclear, return it blank/0 and lower confidence. Never invent.",
+    "If a value is unclear, return it blank/0. Never invent.",
     "",
     "Schema:",
     JSON.stringify({
@@ -81,7 +81,6 @@ export async function extractWithOpenRouter(input: {
         status: "completed|cancelled|refunded|unknown",
         refundAmount: 0,
         itemsText: "short readable item names if visible",
-        confidence: 0.0,
         evidence: {
           restaurant: ["ocr_0001"],
           date: ["ocr_0002"],

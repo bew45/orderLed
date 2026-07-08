@@ -23,7 +23,7 @@ export function ExportScreen() {
     const months = [...new Set(orders.map(orderMonth))].sort();
     const filtered = selectedMonth === "all" ? orders : orders.filter((order) => orderMonth(order) === selectedMonth);
     const netSpend = filtered.reduce((sum, order) => sum + orderAmount(order), 0);
-    const needsCheck = filtered.filter((order) => order.review_state === "needs_review").length;
+    const needsCheck = filtered.filter((order) => order.review_state === "needs_check").length;
     return { months, filtered, netSpend, needsCheck };
   }, [orders, selectedMonth]);
 
@@ -75,7 +75,7 @@ export function ExportScreen() {
         <Alert
           variant="warning"
           title={`${exportState.needsCheck} row${exportState.needsCheck === 1 ? "" : "s"} may need checking`}
-          message="You can export now. These rows are low-confidence, cancelled, or refunded cases, so totals may change if corrected later."
+          message="You can export now, but these rows did not pass the amount match check, so totals may change if corrected later."
         />
       )}
 

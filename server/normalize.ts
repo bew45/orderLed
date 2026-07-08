@@ -1,4 +1,4 @@
-import type { ExtractedOrder, OrderStatus, OcrRow, ReviewState, SourceApp } from "./types";
+import type { ExtractedOrder, OrderStatus, OcrRow, SourceApp } from "./types";
 
 const THAI_MONTHS: Record<string, string> = {
   "ม.ค.": "01",
@@ -124,13 +124,6 @@ export function netAmount(status: OrderStatus, total: number, refund: number) {
   return total;
 }
 
-export function reviewState(order: { confidence: number; status: OrderStatus; restaurantName: string; totalAmount: number }): ReviewState {
-  if (order.confidence < 0.75) return "needs_review";
-  if (order.status === "unknown") return "needs_review";
-  if (!order.restaurantName || order.totalAmount <= 0) return "needs_review";
-  return "ok";
-}
-
 export function evidenceFromIds(evidence: Record<string, string[]> | undefined, rows: OcrRow[], screenshotId: string) {
   const byId = new Map(rows.map((row) => [row.id, row]));
   const out: Record<string, unknown> = {};
@@ -149,7 +142,6 @@ export function normalizeExtractedOrder(input: ExtractedOrder, fallback: { month
   const refundAmount = amount(input.refundAmount);
   const status = normalizeOrderStatus(input.status, `${restaurantName} ${input.itemsText ?? ""}`);
   const orderedAt = normalizeOrderedAt(input.orderedAt, fallback.month);
-  const confidence = Math.max(0, Math.min(1, Number(input.confidence ?? 0.5) || 0.5));
   const net = netAmount(status, totalAmount, refundAmount);
   return {
     sourceApp,
@@ -160,8 +152,6 @@ export function normalizeExtractedOrder(input: ExtractedOrder, fallback: { month
     refundAmount,
     netAmount: net,
     itemsText: String(input.itemsText ?? "").trim(),
-    confidence,
-    reviewState: reviewState({ confidence, status, restaurantName, totalAmount }),
     duplicateKey: duplicateKey({ sourceApp, orderedAt, restaurantName, totalAmount })
   };
 }

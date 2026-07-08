@@ -34,7 +34,6 @@ export function extractWithHeuristics(rows: OcrRow[], fallbackApp: SourceApp): {
       status: normalizeOrderStatus("", nearbyText),
       refundAmount: /คืนเงิน|refund/i.test(nearbyText) ? amount(amountRow.text) : 0,
       itemsText: "",
-      confidence: restaurantRow && dateRow ? 0.62 : 0.45,
       evidence: {
         amount: [amountRow.id],
         date: dateRow ? [dateRow.id] : [],

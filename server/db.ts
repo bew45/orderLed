@@ -65,8 +65,7 @@ db.exec(`
     refund_amount REAL NOT NULL DEFAULT 0,
     net_amount REAL NOT NULL DEFAULT 0,
     items_text TEXT NOT NULL DEFAULT '',
-    confidence REAL NOT NULL DEFAULT 0,
-    review_state TEXT NOT NULL DEFAULT 'needs_review',
+    review_state TEXT NOT NULL DEFAULT 'needs_check',
     duplicate_key TEXT NOT NULL DEFAULT '',
     source_screenshot_ids_json TEXT NOT NULL DEFAULT '[]',
     evidence_json TEXT NOT NULL DEFAULT '{}',
@@ -103,3 +102,7 @@ addColumnIfMissing("screenshots", "ocr_text_json", "TEXT NOT NULL DEFAULT '[]'")
 addColumnIfMissing("screenshots", "ocr_line_count", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("screenshots", "extracted_order_count", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("screenshots", "extraction_engine", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("screenshots", "amount_check_state", "TEXT NOT NULL DEFAULT 'not_checked'");
+addColumnIfMissing("screenshots", "amount_check_json", "TEXT NOT NULL DEFAULT '{}'");
+
+db.prepare("UPDATE orders SET review_state='needs_check' WHERE review_state='needs_review'").run();

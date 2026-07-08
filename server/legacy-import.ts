@@ -94,7 +94,6 @@ export function importLegacyAmountText(batchId: string, text: string) {
         refundAmount,
         netAmount,
         itemsText: "Imported from legacy amount-only table",
-        confidence: 1,
         reviewState: "ok",
         duplicateKey: `legacy:${parsedDate.isoDate}:${amount}:${lineIndex}:${cellIndex}`,
         sourceScreenshotId: `legacy:${lineIndex}:${cellIndex}`,

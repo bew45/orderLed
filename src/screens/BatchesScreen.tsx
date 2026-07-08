@@ -35,7 +35,7 @@ export function BatchesScreen(props: { onCreateBatch: () => void; onSelected: ()
               <div className="batch-title-row">
                 <strong>{batch.title}</strong>
                 {batch.summary.ordersNeedingReview > 0 && (
-                  <span className="badge badge--needs_review">{batch.summary.ordersNeedingReview} check</span>
+                  <span className="badge badge--needs_check">{batch.summary.ordersNeedingReview} check</span>
                 )}
               </div>
               <div className="batch-meta">

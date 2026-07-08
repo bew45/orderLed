@@ -1,6 +1,7 @@
 export type SourceApp = "grab" | "lineman" | "shopeefood" | "unknown";
 export type OrderStatus = "completed" | "cancelled" | "refunded" | "unknown";
-export type ReviewState = "ok" | "needs_review" | "corrected";
+export type ReviewState = "ok" | "needs_check" | "corrected";
+export type AmountCheckState = "not_checked" | "matched" | "mismatch" | "unavailable";
 
 export type Rect = {
   x: number;
@@ -14,6 +15,26 @@ export type OcrRow = {
   text: string;
   confidence: number;
   bbox: Rect;
+};
+
+export type AmountCandidate = {
+  amount: number;
+  text: string;
+  rowId?: string;
+  bbox?: Rect;
+};
+
+export type AmountCheck = {
+  state: AmountCheckState;
+  aiAmounts: number[];
+  scannerAmounts: number[];
+  missingFromAi: number[];
+  missingFromScanner: number[];
+  sumAi: number;
+  sumScanner: number;
+  reasons: string[];
+  aiCandidates: AmountCandidate[];
+  scannerCandidates: AmountCandidate[];
 };
 
 export type Batch = {
@@ -37,6 +58,8 @@ export type Screenshot = {
   ocr_line_count: number;
   extracted_order_count: number;
   extraction_engine: string;
+  amount_check_state: AmountCheckState;
+  amount_check_json: string;
   processed_at: number;
   error: string;
   created_at: number;
@@ -54,7 +77,6 @@ export type OrderRow = {
   refund_amount: number;
   net_amount: number;
   items_text: string;
-  confidence: number;
   review_state: ReviewState;
   duplicate_key: string;
   source_screenshot_ids_json: string;
@@ -71,7 +93,6 @@ export type ExtractedOrder = {
   status?: OrderStatus;
   refundAmount?: number;
   itemsText?: string;
-  confidence?: number;
   evidence?: Record<string, string[]>;
 };
 
