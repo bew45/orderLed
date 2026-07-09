@@ -16,6 +16,38 @@
   gap: 0.6rem;
 }
 
+.dashboard-beautiful {
+  gap: 0.8rem;
+}
+
+.dash-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.dash-title-row > div {
+  min-width: 0;
+}
+
+.dash-text-action {
+  flex: none;
+  border: 1px solid var(--brand-line);
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  min-height: 36px;
+  padding: 0 0.75rem;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+}
+
+.dash-text-action:active {
+  transform: scale(0.96);
+}
+
 .import-pipeline-card {
   display: grid;
   gap: 0.8rem;
@@ -628,6 +660,39 @@
 .dash-week-col small {
   color: var(--ink-faint);
   font-size: var(--text-xs);
+}
+
+.dash-status-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.dash-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  padding: 0.5rem 0.6rem;
+}
+
+.dash-status-row .badge {
+  justify-self: start;
+  min-width: 0;
+}
+
+.dash-status-row strong {
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.dash-status-row span {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  text-align: right;
 }
 
 .month-chip-row {
