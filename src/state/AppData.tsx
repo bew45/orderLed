@@ -237,15 +237,21 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     processActiveBatch: async (force = false) => {
       if (!activeBatchId) throw new Error("No active import selected");
-      const data = await endpoints.processBatch(activeBatchId, force);
-      await syncActiveData("process");
-      return data.summary;
+      try {
+        const data = await endpoints.processBatch(activeBatchId, force);
+        return data.summary;
+      } finally {
+        await syncActiveData("process");
+      }
     },
 
     processScreenshot: async (screenshotId: string) => {
-      const data = await endpoints.processScreenshot(screenshotId);
-      await syncActiveData("process-screenshot");
-      return data.summary;
+      try {
+        const data = await endpoints.processScreenshot(screenshotId);
+        return data.summary;
+      } finally {
+        await syncActiveData("process-screenshot");
+      }
     },
 
     stopProcessing: async () => {

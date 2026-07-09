@@ -70,9 +70,10 @@ Main point: upload should show the file list first; Read is the explicit extract
 - `server/extraction/process.ts` - batch processing orchestrator: OCR -> OpenRouter -> normalize -> amount check -> upsert, per screenshot, sequentially (not parallel; each screenshot commits to the DB as soon as it finishes, so partial results appear via the 5s `AppData` poll even while a multi-screenshot batch is still running).
 - `server/extraction/openrouter.ts` - sole order extractor (no fallback). Prompt asks for `sourceApp`, one order per visible card, status, and an `evidence` map of OCR row ids per field; also instructs the model to list orders in the same top-to-bottom order the cards appear on screen (for parity with the OCR scanner's position-sorted list). Throws if no `openrouter_api_key` is configured.
 - `server/extraction/amount-check.ts` - `scanAmountCandidates(rows)`: regex/heuristic scan of OCR rows for THB amounts (filters noise like timestamps/coins, range 20-100000). `compareAmounts({ aiCandidates, scannerCandidates })`: multiset (bag) diff, order-independent — returns `AmountCheck` with `state` (`matched`/`mismatch`/`unavailable`), `missingFromAi`/`missingFromScanner`, sums, and reasons.
-- `server/ocr/ocr-runner.ts` - PaddleOCR process runner and queue. Optional: failures here don't block extraction, only degrade amount-check to `"unavailable"`.
-- `scripts/paddle_ocr_worker.py` - Python OCR worker.
-- `scripts/setup-ocr.ps1` - Windows OCR environment setup.
+- `server/ocr/ocr-runner.ts` - PaddleOCR process runner and queue (single persistent worker, FIFO, per-request timeout, 3-strike init circuit breaker). Optional: failures here don't block extraction, only degrade amount-check to `"unavailable"`. Default python resolves to the project `.venv-ocr` when settings/env don't override.
+- `scripts/paddle_ocr_worker.py` - Python OCR worker (auto GPU→CPU fallback at init; reports the actual device in its ready payload).
+- `scripts/ocr-smoke.ts` - `npx tsx scripts/ocr-smoke.ts` runs the real OCR path against the latest uploaded screenshots (rows + scanned amounts + timing).
+- `scripts/setup-ocr.ps1` - Windows OCR environment setup (`.venv-ocr`, pinned `paddlepaddle==3.2.2` — do not upgrade to 3.3.x, see `AGENTS.md` Known Issues).
 
 ## HTTP API
 
@@ -212,4 +213,4 @@ Manual smoke (for the user, or when explicitly asked to drive the app):
 9. open Dashboard and confirm summary updates
 10. export `.xls`, `.csv`, `.pdf`
 
-Known non-blocking issue: local PaddleOCR fails on this Windows setup with a Paddle 3.3.1 PIR/oneDNN runtime bug (see `AGENTS.md` -> Known Issues). This degrades amount-check to `"unavailable"` (more rows land in `needs_check`) but does not block extraction itself.
+Local PaddleOCR works as of 2026-07-10 via the project `.venv-ocr` (paddle 3.2.2, CPU). Quick check: `npx tsx scripts/ocr-smoke.ts`. If OCR ever breaks again it is non-blocking: amount-check degrades to `"unavailable"` (more rows land in `needs_check`) but extraction itself continues (see `AGENTS.md` -> Known Issues).

@@ -245,10 +245,12 @@ export const SOURCE_APP_LABEL: Record<string, string> = {
   unknown: "Unknown"
 };
 
+/* CVD-validated categorical palette (lightness band, chroma floor, adjacent-pair
+   separation, 3:1 contrast on white). Unknown is a deliberate neutral "other" slot. */
 export const SOURCE_APP_COLOR: Record<string, string> = {
-  grab: "#0a8a3f",
-  lineman: "#3a3530",
-  shopeefood: "#ee4d2d",
+  grab: "#2e7d32",
+  lineman: "#0369a1",
+  shopeefood: "#e8590c",
   unknown: "#5b665f"
 };
 

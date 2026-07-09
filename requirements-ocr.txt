@@ -1,3 +1,8 @@
-paddleocr>=2.7.3
-paddlepaddle>=2.6.2
+# Pinned to the combo verified working on this Windows setup (2026-07-10).
+# Do NOT upgrade paddlepaddle to 3.3.x: it hits a PIR/oneDNN runtime bug on CPU
+# ((Unimplemented) ConvertPirAttribute2RuntimeAttribute) with PP-OCRv5 det models.
+numpy>=1.24,<2.4
+protobuf>=5,<7
+paddlepaddle==3.2.2
+paddleocr>=3.0.0,<4
 Pillow>=10.0.0

@@ -3,20 +3,27 @@ import { endpoints, fmtMoney, parseAmountCheck, SOURCE_APP_LABEL, type AmountChe
 import { Badge, IconEdit, IconTrash, IconRefresh, PrimaryButton } from "./ui";
 
 function screenshotCheckFinished(shot: ScreenshotRow) {
-  return ["done", "failed", "skipped"].includes(shot.ocr_status) && shot.llm_status === "done";
+  return shot.processed_at > 0 && ["done", "failed", "skipped"].includes(shot.ocr_status) && shot.llm_status === "done";
 }
 
-function issueClass(shot: ScreenshotRow) {
-  if (shot.error || shot.ocr_status === "failed" || shot.llm_status === "failed") return "uploaded-shot has-issue is-error";
-  if (screenshotCheckFinished(shot) && (shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable")) return "uploaded-shot has-issue is-warn";
+function issueClass(shot: ScreenshotRow, orders: OrderRow[]) {
+  if (shot.error || shot.llm_status === "failed") return "uploaded-shot has-issue is-error";
+  if (screenshotNeedsAttention(shot, orders)) return "uploaded-shot has-issue is-warn";
   return "uploaded-shot";
 }
 
-function hasIssue(shot: ScreenshotRow) {
+function screenshotNeedsAttention(shot: ScreenshotRow, orders: OrderRow[]) {
+  const needsCheckCount = orders.filter((order) => order.review_state === "needs_check").length;
+  if (needsCheckCount > 0) return true;
+  if (!screenshotCheckFinished(shot)) return false;
+  if (orders.length > 0) return false;
+  return shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable";
+}
+
+function hasIssue(shot: ScreenshotRow, orders: OrderRow[]) {
   return Boolean(shot.error)
-    || shot.ocr_status === "failed"
     || shot.llm_status === "failed"
-    || (screenshotCheckFinished(shot) && (shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable"));
+    || screenshotNeedsAttention(shot, orders);
 }
 
 function parseOcrRows(value: string): OcrTextRow[] {
@@ -121,7 +128,7 @@ export function ScreenshotList(props: {
 
   function isExpanded(shot: ScreenshotRow) {
     const override = expandOverrides[shot.id];
-    return override === undefined ? hasIssue(shot) : override;
+    return override === undefined ? hasIssue(shot, ordersByScreenshot.get(shot.id) ?? []) : override;
   }
 
   function toggleExpanded(shot: ScreenshotRow) {
@@ -166,21 +173,24 @@ export function ScreenshotList(props: {
           </span>
         </div>
       )}
-      {screenshots.map((shot) => (
-        <ScreenshotCard
-          key={shot.id}
-          shot={shot}
-          confirmDelete={confirmId === shot.id}
-          deleting={deletingId === shot.id}
-          showOcr={props.showOcr}
-          orders={ordersByScreenshot.get(shot.id) ?? []}
-          expanded={props.showOcr ? isExpanded(shot) : true}
-          onToggleExpand={props.showOcr ? () => toggleExpanded(shot) : undefined}
-          onDelete={props.onDelete ? () => handleDelete(shot.id) : undefined}
-          onCheck={props.onCheck && screenshotCheckFinished(shot) && shot.extracted_order_count > 0 ? () => props.onCheck!(shot.id) : undefined}
-          onRerun={props.onRerun ? () => props.onRerun!(shot.id) : undefined}
-        />
-      ))}
+      {screenshots.map((shot) => {
+        const shotOrders = ordersByScreenshot.get(shot.id) ?? [];
+        return (
+          <ScreenshotCard
+            key={shot.id}
+            shot={shot}
+            confirmDelete={confirmId === shot.id}
+            deleting={deletingId === shot.id}
+            showOcr={props.showOcr}
+            orders={shotOrders}
+            expanded={props.showOcr ? isExpanded(shot) : true}
+            onToggleExpand={props.showOcr ? () => toggleExpanded(shot) : undefined}
+            onDelete={props.onDelete ? () => handleDelete(shot.id) : undefined}
+            onCheck={props.onCheck && screenshotCheckFinished(shot) && shot.extracted_order_count > 0 ? () => props.onCheck!(shot.id) : undefined}
+            onRerun={props.onRerun ? () => props.onRerun!(shot.id) : undefined}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -209,9 +219,13 @@ function ScreenshotCard(props: {
   const refundedCount = props.orders.filter((order) => order.status === "refunded").length;
   const cancelledCount = props.orders.filter((order) => order.status === "cancelled").length;
   const needsCheckCount = props.orders.filter((order) => order.review_state === "needs_check").length;
+  const manuallyChecked = checkFinished
+    && props.orders.length > 0
+    && needsCheckCount === 0
+    && (props.shot.amount_check_state === "mismatch" || props.shot.amount_check_state === "unavailable");
 
   return (
-    <article className={issueClass(props.shot)}>
+    <article className={issueClass(props.shot, props.orders)}>
       <a className="uploaded-shot-thumb" href={endpoints.screenshotImageUrl(props.shot.id)} target="_blank" rel="noreferrer">
         <img src={endpoints.screenshotImageUrl(props.shot.id)} alt={props.shot.original_name} loading="lazy" />
       </a>
@@ -233,7 +247,7 @@ function ScreenshotCard(props: {
         </span>
         {checkFinished && amountCheck && (
           <span className="uploaded-shot-check-row">
-            <Badge status={amountCheck.state} label={amountCheckLabel(amountCheck.state)} />
+            <Badge status={manuallyChecked ? "corrected" : amountCheck.state} label={manuallyChecked ? "Checked manually" : amountCheckLabel(amountCheck.state)} />
             <small>{amountCheck.aiAmounts.length} AI / {amountCheck.scannerAmounts.length} OCR</small>
           </span>
         )}
@@ -247,8 +261,11 @@ function ScreenshotCard(props: {
         {checkFinished && engineLabel(props.shot.extraction_engine) && (
           <small className="uploaded-shot-engine">Read with {engineLabel(props.shot.extraction_engine)}</small>
         )}
-        {(props.shot.error || props.shot.ocr_error || props.shot.llm_error) && (
-          <small className="uploaded-shot-error">{props.shot.error || props.shot.llm_error || props.shot.ocr_error}</small>
+        {(props.shot.error || props.shot.llm_error) && (
+          <small className="uploaded-shot-error">{props.shot.error || props.shot.llm_error}</small>
+        )}
+        {!props.shot.error && !props.shot.llm_error && props.shot.ocr_error && checkFinished && (
+          <small className="uploaded-shot-error">OCR checker unavailable; manual check required.</small>
         )}
       </span>
 

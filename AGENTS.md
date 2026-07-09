@@ -145,12 +145,13 @@ When committing in a dirty tree:
 - do not include unrelated design or generated changes
 - do not remove data, uploads, exports, or environment files
 
-## Known Issues (verified 2026-07-08)
+## Known Issues (verified 2026-07-10)
 
-- **Local PaddleOCR fails on this Windows setup.** Real screenshots hit `(Unimplemented) ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]` — a `paddlepaddle 3.3.1` PIR/oneDNN runtime bug (the `PP-OCRv5_server_det` detection model triggers it on CPU), not an app bug. `FLAGS_use_mkldnn`/`FLAGS_use_onednn` env vars in `scripts/paddle_ocr_worker.py` do **not** disable it on this Paddle version.
-  - This is **non-blocking** for order extraction: `processBatch` (`server/extraction/process.ts`) catches the OCR error and continues straight to OpenRouter, which reads the image directly.
-  - It does degrade the **amount-check verifier** (`server/extraction/amount-check.ts`): with no OCR rows, `scannerCandidates` is empty, so `amount_check_state` becomes `"unavailable"` (not `"matched"`), and the order's `review_state` becomes `"needs_check"` purely because there's nothing to cross-check against — not because the AI extraction was wrong.
-- **OpenRouter extraction is confirmed working end-to-end** as of this session (real batch: 3/3 screenshots read, 16 orders extracted via `google/gemma-4-31b-it`, engine-tracked as `openrouter:google/gemma-4-31b-it` in `screenshots.extraction_engine`). Do not assume it's broken — check `getAppSettings().openrouter_api_key` (Settings sheet or `.env`) is actually set before debugging extraction failures.
+- **Local PaddleOCR is FIXED and working** (2026-07-10). The working combo is the project's own `.venv-ocr` (`paddlepaddle==3.2.2`, pinned in `requirements-ocr.txt`) on **CPU** (`paddle_device: "cpu"`, ~8–13s per screenshot). Verify with `npx tsx scripts/ocr-smoke.ts` — it runs the real settings → worker → queue → amount-scan path against the latest uploaded screenshots.
+  - The old failure had two causes, both config: (1) settings/`.env` pointed `paddle_python` at the Muse GPU venv (`C:\Users\newpo\.muse-manga-ocr-gpu`), which crashes with `Could not locate cublasLt64_13.dll` on `device=gpu` and hits the `paddlepaddle 3.3.x` PIR/oneDNN bug (`ConvertPirAttribute2RuntimeAttribute`) on CPU; (2) `paddle_device` defaulted to `"gpu"`.
+  - **Do not upgrade paddlepaddle to 3.3.x** and do not point `paddle_python` back at the Muse venv. The worker now auto-falls back GPU→CPU at init, and the runner drains the queue after 3 consecutive init failures instead of hanging every screenshot.
+  - If OCR fails, extraction still works: `processBatch` catches the OCR error and continues to OpenRouter; only the amount-check verifier degrades to `"unavailable"` (rows land in `needs_check`).
+- **OpenRouter extraction is confirmed working end-to-end** (real batch: 3/3 screenshots read, 16 orders extracted). Do not assume it's broken — check `getAppSettings().openrouter_api_key` (Settings sheet or `.env`) is actually set before debugging extraction failures.
 
 ## Start Here
 

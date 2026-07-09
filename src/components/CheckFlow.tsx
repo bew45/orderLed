@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   endpoints,
-  firstScreenshotId,
   fmtMoney,
   parseAmountCheck,
   STATUS_LABEL,
@@ -48,22 +47,38 @@ function orderToDraft(order: OrderRow): Draft {
   };
 }
 
+function screenshotIdsForOrder(order: OrderRow) {
+  try {
+    const ids = JSON.parse(order.source_screenshot_ids_json || "[]");
+    return Array.isArray(ids) ? ids.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
 function buildPages(orders: OrderRow[], screenshots: ScreenshotRow[], onlyNeedsCheck: boolean, focusScreenshotId?: string): Page[] {
+  const allByShot = new Map<string, OrderRow[]>();
   const byShot = new Map<string, OrderRow[]>();
   for (const order of orders) {
-    if (onlyNeedsCheck && order.review_state !== "needs_check") continue;
-    const shotId = firstScreenshotId(order);
-    if (!shotId) continue;
-    const list = byShot.get(shotId) ?? [];
-    list.push(order);
-    byShot.set(shotId, list);
+    for (const shotId of screenshotIdsForOrder(order)) {
+      const allList = allByShot.get(shotId) ?? [];
+      allList.push(order);
+      allByShot.set(shotId, allList);
+
+      if (onlyNeedsCheck && order.review_state !== "needs_check") continue;
+      const checkList = byShot.get(shotId) ?? [];
+      checkList.push(order);
+      byShot.set(shotId, checkList);
+    }
   }
   return screenshots
     .filter((shot) => {
       if (byShot.has(shot.id)) return true;
       if (shot.id === focusScreenshotId) return true;
       if (onlyNeedsCheck) {
-        const hasIssue = shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable" || shot.error;
+        const shotOrders = allByShot.get(shot.id) ?? [];
+        const manuallyResolved = shotOrders.length > 0 && shotOrders.every((order) => order.review_state !== "needs_check");
+        const hasIssue = !manuallyResolved && (shot.amount_check_state === "mismatch" || shot.amount_check_state === "unavailable" || shot.error);
         if (hasIssue) return true;
       }
       return false;
@@ -103,6 +118,10 @@ export function CheckFlow(props: {
   useEffect(() => {
     setPages(buildPages(props.orders, props.screenshots, !browseMode, props.focusScreenshotId));
   }, [props.orders, props.screenshots, browseMode, props.focusScreenshotId]);
+
+  useEffect(() => {
+    setPageIndex((index) => Math.min(index, Math.max(0, pages.length - 1)));
+  }, [pages.length]);
 
   async function handleRerunScreenshot() {
     if (!page) return;
@@ -175,6 +194,7 @@ export function CheckFlow(props: {
           })
         )
       );
+      await refreshOrders();
       setPages((current) => current.map((p, i) => (i === pageIndex ? { ...p, orders: [] } : p)));
       resetRowState();
     } catch (err: any) {

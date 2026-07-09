@@ -29,7 +29,7 @@ function countBy<T>(items: T[], pick: (item: T) => string) {
 }
 
 function screenshotCheckFinished(shot: ScreenshotRow) {
-  return ["done", "failed", "skipped"].includes(shot.ocr_status) && shot.llm_status === "done";
+  return shot.processed_at > 0 && ["done", "failed", "skipped"].includes(shot.ocr_status) && shot.llm_status === "done";
 }
 
 function orderScreenshotIds(order: OrderRow) {
