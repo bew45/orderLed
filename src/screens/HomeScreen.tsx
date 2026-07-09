@@ -9,7 +9,7 @@ import {
   type OrderRow
 } from "../api";
 import { useAppData } from "../state/AppData";
-import { Alert, Badge, EmptyState, IconInbox, PrimaryButton } from "../components/ui";
+import { Alert, Badge, EmptyState, IconGear, IconInbox, PrimaryButton } from "../components/ui";
 
 type AggregateRow = {
   key: string;
@@ -121,7 +121,7 @@ function mostCommonHour(orders: OrderRow[]) {
   return { label: `${String(hour).padStart(2, "0")}:00`, detail: `${count} order${count === 1 ? "" : "s"}` };
 }
 
-export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () => void }) {
+export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () => void; onOpenSettings: () => void }) {
   const { batches, allOrders } = useAppData();
   const [selectedMonth, setSelectedMonth] = useState("all");
 
@@ -198,35 +198,57 @@ export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () 
 
   return (
     <div className="screen dashboard-beautiful">
-      <div className="dash-title-row">
-        <div>
-          <p className="eyebrow">Dashboard</p>
-          <h2 className="screen-title">Food spending</h2>
-          <p className="screen-subtitle">{batches.length} import{batches.length === 1 ? "" : "s"} combined into one ledger.</p>
-        </div>
-        <button className="dash-text-action" onClick={props.onOpenImport}>Import</button>
-      </div>
-
       {!hasOrders ? (
-        <EmptyState
-          icon={<IconInbox size={22} />}
-          title="No dashboard yet"
-          body="Upload screenshots in Import, then read them to build your spending summary."
-        >
-          <PrimaryButton onClick={props.onOpenImport}>Open Import</PrimaryButton>
-        </EmptyState>
+        <>
+          <div className="dash-topbar">
+            <div>
+              <p className="eyebrow">OrderLedger</p>
+              <h2 className="screen-title">Food spending</h2>
+            </div>
+            <button className="icon-btn" onClick={props.onOpenSettings} aria-label="Settings">
+              <IconGear size={19} />
+            </button>
+          </div>
+          <EmptyState
+            icon={<IconInbox size={22} />}
+            title="No dashboard yet"
+            body="Upload screenshots in Import, then read them to build your spending summary."
+          >
+            <PrimaryButton onClick={props.onOpenImport}>Open Import</PrimaryButton>
+          </EmptyState>
+        </>
       ) : (
         <>
-          <section className="dash-hero">
-            <div className="dash-hero-top">
-              <span className="dash-hero-label">{currentLabel}</span>
-              <span className="dash-delta">{dashboard.totals.needsCheck > 0 ? `${dashboard.totals.needsCheck} needs check` : "Matched ledger"}</span>
+          <section className="dash-cover">
+            <div className="dash-cover-top">
+              <div>
+                <span>OrderLedger</span>
+                <strong>Food spending</strong>
+              </div>
+              <button className="dash-cover-gear" onClick={props.onOpenSettings} aria-label="Settings">
+                <IconGear size={18} />
+              </button>
             </div>
-            <strong className="dash-hero-total tabular">{money(dashboard.totals.netSpend)}</strong>
-            <span className="dash-hero-meta">
-              {dashboard.totals.ordersTotal} {rowLabelPlural} / {dashboard.months.length} month{dashboard.months.length === 1 ? "" : "s"}
-              {dashboard.isMonthlyTotalBatch ? "" : ` / ${dashboard.restaurants.length} restaurant${dashboard.restaurants.length === 1 ? "" : "s"}`}
-            </span>
+
+            <div className="dash-cover-main">
+              <span className="dash-cover-label">{currentLabel}</span>
+              <strong className="dash-cover-total tabular">{money(dashboard.totals.netSpend)}</strong>
+              <span className="dash-cover-meta">
+                {dashboard.totals.ordersTotal} {rowLabelPlural} / {dashboard.months.length} month{dashboard.months.length === 1 ? "" : "s"}
+                {dashboard.isMonthlyTotalBatch ? "" : ` / ${dashboard.restaurants.length} restaurant${dashboard.restaurants.length === 1 ? "" : "s"}`}
+              </span>
+            </div>
+
+            <div className="dash-cover-mini">
+              <span>
+                <small>Avg</small>
+                <strong className="tabular">{money(dashboard.totals.averageOrder)}</strong>
+              </span>
+              <span className={dashboard.totals.needsCheck > 0 ? "warn" : ""}>
+                <small>Needs check</small>
+                <strong className="tabular">{dashboard.totals.needsCheck}</strong>
+              </span>
+            </div>
           </section>
 
           <div className="month-chip-row">

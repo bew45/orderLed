@@ -28,15 +28,17 @@ function Shell() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div>
-          <p className="eyebrow">OrderLedger</p>
-          <h1>Food order ledger</h1>
-        </div>
-        <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Settings">
-          <IconGear size={19} />
-        </button>
-      </header>
+      {tab !== "home" && (
+        <header className="app-header">
+          <div>
+            <p className="eyebrow">OrderLedger</p>
+            <h1>Food order ledger</h1>
+          </div>
+          <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Settings">
+            <IconGear size={19} />
+          </button>
+        </header>
+      )}
 
       {error && (
         <div className="inline-banner-slot">
@@ -55,6 +57,7 @@ function Shell() {
         <HomeScreen
           onCreateBatch={() => setCreateBatchOpen(true)}
           onOpenImport={() => setTab("import")}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       )}
       {tab === "batches" && (
