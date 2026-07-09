@@ -1337,3 +1337,751 @@
 .spin {
   animation: spin 1s linear infinite;
 }
+
+/* Meta artifact-inspired dashboard shell. Kept isolated from the older
+   dashboard classes so the Dash tab can move independently. */
+
+.app-shell-dashboard {
+  background: #fcfcfb;
+}
+
+.ol-dashboard {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: calc(var(--safe-top) + 0.75rem) 1.25rem calc(var(--bottom-nav-height) + 1.25rem);
+  color: #111214;
+  background: #fcfcfb;
+}
+
+.ol-dashboard-empty {
+  min-height: 100%;
+}
+
+.ol-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ol-top div:first-child {
+  min-width: 0;
+}
+
+.ol-top span {
+  display: block;
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.ol-top h2 {
+  margin: 0.18rem 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #111214;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.ol-top-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.ol-top button,
+.ol-top-actions button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border: 1px solid #e8e9e6;
+  border-radius: 999px;
+  background: #fff;
+  color: #111214;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.ol-empty {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  margin-top: 1rem;
+  border: 1px solid #e8e9e6;
+  border-radius: 24px;
+  background: #fff;
+  padding: 2.3rem 1.2rem;
+  text-align: center;
+}
+
+.ol-empty > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.1rem;
+  height: 3.1rem;
+  border-radius: 18px;
+  background: #f2f3ef;
+  color: #6b7280;
+}
+
+.ol-empty h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.ol-empty p {
+  margin: 0;
+  max-width: 30ch;
+  color: #6b7280;
+  font-size: 0.82rem;
+}
+
+.ol-hero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 0.85rem;
+  min-height: 214px;
+  border: 1px solid #111214;
+  border-radius: 24px;
+  background:
+    radial-gradient(160px 110px at 92% 0%, rgba(255, 255, 255, 0.16), transparent 72%),
+    linear-gradient(145deg, #111214 0%, #161716 46%, #20382f 100%);
+  color: #fff;
+  padding: 1rem;
+  box-shadow: 0 16px 36px rgba(17, 18, 20, 0.22);
+}
+
+.ol-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.11;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(180deg, black, transparent 82%);
+}
+
+.ol-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.ol-hero-top,
+.ol-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ol-hero-top span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ol-hero-top button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  min-height: 30px;
+  padding: 0 0.85rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.ol-hero-total {
+  align-self: end;
+  margin-top: auto;
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: clamp(2.25rem, 12vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+}
+
+.ol-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.78rem;
+}
+
+.ol-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.55rem;
+}
+
+.ol-hero-grid span {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 0.65rem 0.72rem;
+}
+
+.ol-hero-grid small,
+.ol-insight span {
+  color: #9ca3af;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ol-hero-grid small {
+  color: rgba(255, 255, 255, 0.54);
+}
+
+.ol-hero-grid strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 0.94rem;
+}
+
+.ol-months {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.08rem 0 0.12rem;
+  scrollbar-width: none;
+}
+
+.ol-months::-webkit-scrollbar {
+  display: none;
+}
+
+.ol-months button {
+  flex: none;
+  min-height: 34px;
+  border: 1px solid #e8e9e6;
+  border-radius: 999px;
+  background: #fff;
+  color: #111214;
+  padding: 0 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.ol-months button.active {
+  border-color: #111214;
+  background: #111214;
+  color: #fff;
+}
+
+.ol-check-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  border: 1px solid #fde68a;
+  border-left: 3px solid #f59e0b;
+  border-radius: 18px;
+  background: #fffbeb;
+  padding: 0.8rem 0.9rem;
+  color: #92400e;
+  text-align: left;
+}
+
+.ol-check-card > span {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #fff;
+  font-weight: 800;
+}
+
+.ol-check-card div {
+  display: grid;
+  min-width: 0;
+}
+
+.ol-check-card strong {
+  color: #92400e;
+  font-size: 0.86rem;
+}
+
+.ol-check-card small {
+  color: #b45309;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.ol-card {
+  display: grid;
+  gap: 0.8rem;
+  border: 1px solid #e8e9e6;
+  border-radius: 20px;
+  background: #fff;
+  padding: 0.95rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.ol-card-dark {
+  border-color: #e8e9e6;
+  background: #fff;
+}
+
+.ol-card-head h3 {
+  margin: 0;
+  color: #111214;
+  font-size: 1rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.ol-card-head span {
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.ol-month-bars {
+  display: flex;
+  align-items: end;
+  gap: 0.45rem;
+  overflow-x: auto;
+  min-height: 132px;
+  padding: 0.1rem 0 0;
+  scrollbar-width: none;
+}
+
+.ol-month-bars::-webkit-scrollbar {
+  display: none;
+}
+
+.ol-month-bars button {
+  flex: 1 0 42px;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: #6b7280;
+  padding: 0.1rem;
+}
+
+.ol-month-bars button.active {
+  background: #f2f3ef;
+  color: #111214;
+}
+
+.ol-month-bars span {
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ol-month-bars i {
+  display: flex;
+  align-items: end;
+  width: 100%;
+  max-width: 2.1rem;
+  height: 84px;
+}
+
+.ol-month-bars b {
+  display: block;
+  width: 100%;
+  border-radius: 8px 8px 2px 2px;
+  background: #b9d4c8;
+}
+
+.ol-month-bars button.active b {
+  background: #111214;
+}
+
+.ol-month-bars small {
+  color: #9ca3af;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.ol-health-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ol-health-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ol-health-row i,
+.ol-app-list i {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+}
+
+.ol-app-stack {
+  display: flex;
+  gap: 2px;
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: #f2f3ef;
+}
+
+.ol-app-stack i {
+  min-width: 4px;
+  height: 100%;
+}
+
+.ol-app-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ol-app-list div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-width: 0;
+  color: #111214;
+  font-size: 0.82rem;
+}
+
+.ol-app-list span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ol-app-list strong {
+  flex: none;
+  font-size: 0.82rem;
+}
+
+.ol-rank-list {
+  display: grid;
+}
+
+.ol-rank-list > div {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.65rem 0;
+  border-top: 1px solid #f3f4f6;
+}
+
+.ol-rank-list > div:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.ol-rank-list > div:last-child {
+  padding-bottom: 0;
+}
+
+.ol-rank {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 1px solid #e8e9e6;
+  border-radius: 999px;
+  background: #f2f3ef;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.ol-rank-main {
+  flex: 1;
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.ol-rank-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #111214;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.ol-rank-main small {
+  color: #9ca3af;
+  font-size: 0.72rem;
+}
+
+.ol-rank-main i {
+  display: block;
+  overflow: hidden;
+  height: 5px;
+  border-radius: 999px;
+  background: #f2f3ef;
+}
+
+.ol-rank-main b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #111214;
+}
+
+.ol-rank-money {
+  flex: none;
+  color: #111214;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.ol-insight {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.65rem;
+}
+
+.ol-insight div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+  border: 1px solid #e8e9e6;
+  border-radius: 18px;
+  background: #f9faf8;
+  padding: 0.85rem;
+}
+
+.ol-insight strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #111214;
+  font-size: 0.96rem;
+}
+
+.ol-insight small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.ol-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.ol-week span {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+}
+
+.ol-week i {
+  display: flex;
+  align-items: end;
+  width: 100%;
+  max-width: 1.5rem;
+  height: 54px;
+}
+
+.ol-week b {
+  display: block;
+  width: 100%;
+  border-radius: 7px 7px 2px 2px;
+  background: #111214;
+}
+
+.ol-week small {
+  color: #9ca3af;
+  font-size: 0.68rem;
+}
+
+.ol-recent {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ol-recent article {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  border: 1px solid #e8e9e6;
+  border-radius: 16px;
+  background: #fff;
+  padding: 0.7rem 0.75rem;
+}
+
+.ol-recent article.flagged {
+  border-color: #fde68a;
+  border-left: 3px solid #f59e0b;
+  background: #fffdf4;
+}
+
+.ol-recent article > i {
+  flex: none;
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 999px;
+}
+
+.ol-recent article > div {
+  flex: 1;
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.ol-recent strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #111214;
+  font-size: 0.83rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.ol-recent small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #9ca3af;
+  font-size: 0.72rem;
+}
+
+.ol-recent article > span {
+  flex: none;
+  color: #111214;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.ol-recent article > b {
+  flex: none;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+}
+
+.ol-export-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #e8e9e6;
+  border-radius: 999px;
+  background: #fff;
+  color: #111214;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.app-shell-dashboard .tab-bar-dock {
+  bottom: 0;
+  width: min(100%, var(--page-max-width));
+  max-width: var(--page-max-width);
+}
+
+.app-shell-dashboard .tab-bar {
+  border: 0;
+  border-top: 1px solid #e8e9e6;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.12);
+  padding: 0.55rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.app-shell-dashboard .tab-item {
+  min-height: 50px;
+  border-radius: 0;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.app-shell-dashboard .tab-item svg {
+  width: 19px;
+  height: 19px;
+}
+
+.app-shell-dashboard .tab-item.active {
+  background: transparent;
+  color: #111214;
+}
+
+.app-shell-dashboard .tab-item.active svg {
+  padding: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #111214;
+  color: #fff;
+}
+
+.app-shell-dashboard .tab-item .tab-badge {
+  top: 0;
+  right: 14px;
+  background: #f59e0b;
+}
+
+@media (max-width: 360px) {
+  .ol-dashboard {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .ol-hero-total {
+    font-size: 2rem;
+  }
+
+  .ol-insight {
+    grid-template-columns: 1fr;
+  }
+}

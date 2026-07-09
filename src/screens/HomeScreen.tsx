@@ -9,16 +9,9 @@ import {
   type OrderRow
 } from "../api";
 import { useAppData } from "../state/AppData";
-import { Alert, Badge, EmptyState, IconGear, IconInbox, PrimaryButton } from "../components/ui";
+import { IconCamera, IconExport, IconGear, IconInbox, PrimaryButton } from "../components/ui";
 
 type AggregateRow = {
-  key: string;
-  label: string;
-  count: number;
-  amount: number;
-};
-
-type WeekRow = {
   key: string;
   label: string;
   count: number;
@@ -28,12 +21,7 @@ type WeekRow = {
 const WEEK_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function money(value: number) {
-  return `THB ${fmtMoney(value)}`;
-}
-
-function compactMoney(value: number) {
-  if (Math.abs(value) >= 1000) return `${fmtMoney(value / 1000)}k`;
-  return fmtMoney(value);
+  return `${fmtMoney(value)}฿`;
 }
 
 function orderAmount(order: Pick<OrderRow, "net_amount" | "total_amount">) {
@@ -45,7 +33,19 @@ function orderMonth(order: Pick<OrderRow, "ordered_at">) {
 }
 
 function monthLabel(month: string) {
-  return month === "unknown" ? "Unknown month" : fmtMonthLabel(month);
+  return month === "unknown" ? "Unknown" : fmtMonthLabel(month);
+}
+
+function shortMonthLabel(month: string) {
+  if (month === "unknown") return "Unknown";
+  const [year, m] = month.split("-").map(Number);
+  if (!year || !m) return month;
+  return new Date(year, m - 1, 1).toLocaleDateString("en-US", { month: "short" });
+}
+
+function compactMoney(value: number) {
+  if (Math.abs(value) >= 1000) return `${fmtMoney(value / 1000)}k`;
+  return fmtMoney(value);
 }
 
 function firstItem(itemsText: string) {
@@ -53,7 +53,7 @@ function firstItem(itemsText: string) {
     .split(/\r?\n|,\s*/)
     .map((item) => item.trim())
     .filter(Boolean)[0];
-  return first || "No item text yet";
+  return first || "No item text";
 }
 
 function isMonthlyTotalSnapshot(order: OrderRow) {
@@ -63,24 +63,6 @@ function isMonthlyTotalSnapshot(order: OrderRow) {
 function validOrderDate(order: OrderRow) {
   const date = new Date(order.ordered_at || "");
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function summarizeOrders(orders: OrderRow[]) {
-  const netSpend = orders.reduce((sum, order) => sum + orderAmount(order), 0);
-  const completedSpend = orders
-    .filter((order) => order.status === "completed")
-    .reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
-  const refundedOrCancelled = orders
-    .filter((order) => order.status === "cancelled" || order.status === "refunded")
-    .reduce((sum, order) => sum + Math.abs(Number(order.total_amount || 0)), 0);
-  return {
-    netSpend,
-    completedSpend,
-    refundedOrCancelled,
-    ordersTotal: orders.length,
-    needsCheck: orders.filter((order) => order.review_state === "needs_check").length,
-    averageOrder: orders.length ? netSpend / orders.length : 0
-  };
 }
 
 function aggregate(orders: OrderRow[], pick: (order: OrderRow) => { key: string; label: string }) {
@@ -95,7 +77,20 @@ function aggregate(orders: OrderRow[], pick: (order: OrderRow) => { key: string;
   return [...map.values()].sort((a, b) => b.amount - a.amount || b.count - a.count);
 }
 
-function weekdayRows(orders: OrderRow[]): WeekRow[] {
+function mostCommonHour(orders: OrderRow[]) {
+  const map = new Map<number, number>();
+  for (const order of orders) {
+    const date = validOrderDate(order);
+    if (!date) continue;
+    const hour = date.getHours();
+    map.set(hour, (map.get(hour) ?? 0) + 1);
+  }
+  const best = [...map.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (!best) return { label: "Unknown", detail: "No dated orders" };
+  return { label: `${String(best[0]).padStart(2, "0")}:00`, detail: `${best[1]} order${best[1] === 1 ? "" : "s"}` };
+}
+
+function weekdayRows(orders: OrderRow[]) {
   const rows = WEEK_LABELS.map((label, index) => ({ key: String(index), label, count: 0, amount: 0 }));
   for (const order of orders) {
     const date = validOrderDate(order);
@@ -107,18 +102,11 @@ function weekdayRows(orders: OrderRow[]): WeekRow[] {
   return rows;
 }
 
-function mostCommonHour(orders: OrderRow[]) {
-  const map = new Map<number, number>();
-  for (const order of orders) {
-    const date = validOrderDate(order);
-    if (!date) continue;
-    const hour = date.getHours();
-    map.set(hour, (map.get(hour) ?? 0) + 1);
-  }
-  const best = [...map.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (!best) return { label: "Unknown", detail: "No dated orders" };
-  const [hour, count] = best;
-  return { label: `${String(hour).padStart(2, "0")}:00`, detail: `${count} order${count === 1 ? "" : "s"}` };
+function statusDot(status: string) {
+  if (status === "completed") return "#16A34A";
+  if (status === "refunded") return "#F59E0B";
+  if (status === "cancelled") return "#9CA3AF";
+  return "#D1D5DB";
 }
 
 export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () => void; onOpenSettings: () => void }) {
@@ -131,11 +119,14 @@ export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () 
       const month = orderMonth(order);
       return { key: month, label: monthLabel(month) };
     }).sort((a, b) => a.key.localeCompare(b.key));
-    const months = monthly.map((row) => row.key);
     const filteredOrders = selectedMonth === "all"
       ? allOrders
       : allOrders.filter((order) => orderMonth(order) === selectedMonth);
-    const totals = summarizeOrders(filteredOrders);
+    const netSpend = filteredOrders.reduce((sum, order) => sum + orderAmount(order), 0);
+    const completedSpend = filteredOrders
+      .filter((order) => order.status === "completed")
+      .reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
+    const needsCheck = filteredOrders.filter((order) => order.review_state === "needs_check").length;
     const restaurants = aggregate(filteredOrders, (order) => ({
       key: order.restaurant_name || "Unknown restaurant",
       label: order.restaurant_name || "Unknown restaurant"
@@ -158,294 +149,245 @@ export function HomeScreen(props: { onCreateBatch: () => void; onOpenImport: () 
     const peakHour = mostCommonHour(filteredOrders);
 
     return {
-      months,
-      monthly,
-      isMonthlyTotalBatch,
-      filteredOrders,
-      totals,
-      restaurants,
       apps,
-      statuses,
-      recent,
-      week,
+      averageOrder: filteredOrders.length ? netSpend / filteredOrders.length : 0,
       busiestDay,
+      completedSpend,
+      filteredOrders,
+      isMonthlyTotalBatch,
+      monthly,
+      needsCheck,
+      netSpend,
       peakHour,
-      topRestaurant: restaurants[0]
+      recent,
+      restaurants,
+      statuses,
+      week
     };
   }, [allOrders, selectedMonth]);
 
   if (batches.length === 0) {
     return (
-      <div className="screen">
-        <EmptyState
-          icon={<IconInbox size={24} />}
-          title="Start an import"
-          body="Create an import, then upload delivery screenshots from Grab, LINE MAN, or ShopeeFood."
-        >
+      <div className="ol-dashboard ol-dashboard-empty">
+        <div className="ol-top">
+          <div>
+            <span>OrderLedger</span>
+            <h2>Food spending</h2>
+          </div>
+          <button onClick={props.onOpenSettings} aria-label="Settings"><IconGear size={18} /></button>
+        </div>
+        <div className="ol-empty">
+          <span><IconInbox size={24} /></span>
+          <h3>Start an import</h3>
+          <p>Create an import, then upload delivery screenshots from Grab, LINE MAN, or ShopeeFood.</p>
           <PrimaryButton onClick={props.onCreateBatch}>Create import</PrimaryButton>
-        </EmptyState>
+        </div>
       </div>
     );
   }
 
+  const months = dashboard.monthly.map((row) => row.key);
   const hasOrders = allOrders.length > 0;
-  const currentLabel = selectedMonth === "all" ? "All detected months" : monthLabel(selectedMonth);
-  const rowLabel = dashboard.isMonthlyTotalBatch ? "monthly total" : "order";
-  const rowLabelPlural = dashboard.isMonthlyTotalBatch ? "monthly totals" : "orders";
   const maxMonthly = Math.max(...dashboard.monthly.map((row) => row.amount), 1);
   const maxRestaurant = Math.max(...dashboard.restaurants.map((row) => row.amount), 1);
   const maxWeekday = Math.max(...dashboard.week.map((row) => row.amount), 1);
+  const currentLabel = selectedMonth === "all" ? "All months" : monthLabel(selectedMonth);
+  const topRestaurant = dashboard.restaurants[0];
 
   return (
-    <div className="screen dashboard-beautiful">
+    <div className="ol-dashboard">
+      <div className="ol-top">
+        <div>
+          <span>OrderLedger</span>
+          <h2>Food spending</h2>
+        </div>
+        <div className="ol-top-actions">
+          <button onClick={props.onOpenImport} aria-label="Import"><IconCamera size={18} /></button>
+          <button onClick={props.onOpenSettings} aria-label="Settings"><IconGear size={18} /></button>
+        </div>
+      </div>
+
       {!hasOrders ? (
-        <>
-          <div className="dash-topbar">
-            <div>
-              <p className="eyebrow">OrderLedger</p>
-              <h2 className="screen-title">Food spending</h2>
-            </div>
-            <button className="icon-btn" onClick={props.onOpenSettings} aria-label="Settings">
-              <IconGear size={19} />
-            </button>
-          </div>
-          <EmptyState
-            icon={<IconInbox size={22} />}
-            title="No dashboard yet"
-            body="Upload screenshots in Import, then read them to build your spending summary."
-          >
-            <PrimaryButton onClick={props.onOpenImport}>Open Import</PrimaryButton>
-          </EmptyState>
-        </>
+        <div className="ol-empty">
+          <span><IconInbox size={24} /></span>
+          <h3>No dashboard yet</h3>
+          <p>Upload screenshots in Import, then read them to build your spending summary.</p>
+          <PrimaryButton onClick={props.onOpenImport}>Open Import</PrimaryButton>
+        </div>
       ) : (
         <>
-          <section className="dash-cover">
-            <div className="dash-cover-top">
-              <div>
-                <span>OrderLedger</span>
-                <strong>Food spending</strong>
-              </div>
-              <button className="dash-cover-gear" onClick={props.onOpenSettings} aria-label="Settings">
-                <IconGear size={18} />
-              </button>
+          <section className="ol-hero">
+            <div className="ol-hero-top">
+              <span>{currentLabel}</span>
+              <button onClick={props.onOpenImport}>Import</button>
             </div>
-
-            <div className="dash-cover-main">
-              <span className="dash-cover-label">{currentLabel}</span>
-              <strong className="dash-cover-total tabular">{money(dashboard.totals.netSpend)}</strong>
-              <span className="dash-cover-meta">
-                {dashboard.totals.ordersTotal} {rowLabelPlural} / {dashboard.months.length} month{dashboard.months.length === 1 ? "" : "s"}
-                {dashboard.isMonthlyTotalBatch ? "" : ` / ${dashboard.restaurants.length} restaurant${dashboard.restaurants.length === 1 ? "" : "s"}`}
-              </span>
+            <strong className="ol-hero-total tabular">{money(dashboard.netSpend)}</strong>
+            <div className="ol-hero-meta">
+              <span>{dashboard.filteredOrders.length} orders</span>
+              <span>{months.length} months</span>
+              <span>{dashboard.restaurants.length} restaurants</span>
             </div>
-
-            <div className="dash-cover-mini">
+            <div className="ol-hero-grid">
               <span>
-                <small>Avg</small>
-                <strong className="tabular">{money(dashboard.totals.averageOrder)}</strong>
+                <small>Completed</small>
+                <strong className="tabular">{money(dashboard.completedSpend)}</strong>
               </span>
-              <span className={dashboard.totals.needsCheck > 0 ? "warn" : ""}>
-                <small>Needs check</small>
-                <strong className="tabular">{dashboard.totals.needsCheck}</strong>
+              <span>
+                <small>Avg/order</small>
+                <strong className="tabular">{money(dashboard.averageOrder)}</strong>
               </span>
             </div>
           </section>
 
-          <div className="month-chip-row">
-            <button className={selectedMonth === "all" ? "chip active" : "chip"} onClick={() => setSelectedMonth("all")}>All</button>
-            {dashboard.months.map((month) => (
-              <button key={month} className={selectedMonth === month ? "chip active" : "chip"} onClick={() => setSelectedMonth(month)}>
+          <div className="ol-months">
+            <button className={selectedMonth === "all" ? "active" : ""} onClick={() => setSelectedMonth("all")}>All</button>
+            {months.map((month) => (
+              <button key={month} className={selectedMonth === month ? "active" : ""} onClick={() => setSelectedMonth(month)}>
                 {monthLabel(month)}
               </button>
             ))}
           </div>
 
-          <div className="dash-stat-grid">
-            <div className="dash-stat">
-              <span className="dash-stat-label">Completed</span>
-              <strong className="dash-stat-value tabular">{money(dashboard.totals.completedSpend)}</strong>
-            </div>
-            <div className="dash-stat">
-              <span className="dash-stat-label">Avg / order</span>
-              <strong className="dash-stat-value tabular">{money(dashboard.totals.averageOrder)}</strong>
-            </div>
-            <div className="dash-stat">
-              <span className="dash-stat-label">{dashboard.isMonthlyTotalBatch ? "Rows" : "Orders"}</span>
-              <strong className="dash-stat-value tabular">{dashboard.totals.ordersTotal}</strong>
-            </div>
-            <div className={dashboard.totals.needsCheck > 0 ? "dash-stat warn" : "dash-stat"}>
-              <span className="dash-stat-label">Needs check</span>
-              <strong className="dash-stat-value tabular">{dashboard.totals.needsCheck}</strong>
-            </div>
-          </div>
-
-          {dashboard.totals.needsCheck > 0 && (
-            <Alert
-              variant="warning"
-              title={`${dashboard.totals.needsCheck} row${dashboard.totals.needsCheck === 1 ? "" : "s"} may need checking`}
-              message="Open Import to check flagged orders against the original screenshots."
-              onDismiss={undefined}
-            />
+          {dashboard.needsCheck > 0 && (
+            <button className="ol-check-card" onClick={props.onOpenImport}>
+              <span>{dashboard.needsCheck}</span>
+              <div>
+                <strong>orders need check</strong>
+                <small>Open Import to compare flagged rows with screenshots</small>
+              </div>
+            </button>
           )}
 
-          <section className="dashboard-section">
-            <div className="dashboard-section-head">
+          <section className="ol-card ol-card-dark">
+            <div className="ol-card-head">
               <h3>Monthly trend</h3>
-              <span>{dashboard.months.length} found</span>
+              <span>{months.length} found</span>
             </div>
-            <div className="dash-trend">
-              {dashboard.monthly.map((row) => {
-                const height = Math.max(12, Math.round((row.amount / maxMonthly) * 92));
-                return (
-                  <button
-                    className={selectedMonth === row.key ? "dash-trend-col selected" : "dash-trend-col"}
-                    key={row.key}
-                    onClick={() => setSelectedMonth(row.key)}
-                  >
-                    <span className="dash-trend-value tabular">{compactMoney(row.amount)}</span>
-                    <span className="dash-trend-track"><i className="dash-trend-fill" style={{ height }} /></span>
-                    <span className="dash-trend-month">{row.key === "unknown" ? "?" : row.key.slice(5)}</span>
-                  </button>
-                );
-              })}
+            <div className="ol-month-bars">
+              {dashboard.monthly.map((row) => (
+                <button key={row.key} onClick={() => setSelectedMonth(row.key)} className={selectedMonth === row.key ? "active" : ""}>
+                  <span className="tabular">{compactMoney(row.amount)}</span>
+                  <i><b style={{ height: `${Math.max(8, (row.amount / maxMonthly) * 100)}%` }} /></i>
+                  <small>{shortMonthLabel(row.key)}</small>
+                </button>
+              ))}
             </div>
           </section>
 
           {!dashboard.isMonthlyTotalBatch && (
             <>
-              <section className="dashboard-section">
-                <div className="dashboard-section-head">
-                  <h3>By app</h3>
-                  <span>{dashboard.apps.length} sources</span>
+              <section className="ol-card">
+                <div className="ol-card-head">
+                  <h3>Ledger health</h3>
+                  <span>{dashboard.needsCheck ? `${dashboard.needsCheck} flagged` : "All clear"}</span>
                 </div>
-                <div className="dash-stack" aria-hidden="true">
+                <div className="ol-health-row">
+                  {dashboard.statuses.map((row) => (
+                    <span key={row.key}>
+                      <i style={{ background: statusDot(row.key) }} />
+                      {row.label} {row.count}
+                    </span>
+                  ))}
+                </div>
+                <div className="ol-app-stack">
                   {dashboard.apps.map((row) => (
                     <i
-                      className="dash-stack-seg"
                       key={row.key}
                       style={{
-                        width: `${Math.max(5, (row.amount / Math.max(dashboard.totals.netSpend, 1)) * 100)}%`,
+                        width: `${Math.max(5, (row.amount / Math.max(dashboard.netSpend, 1)) * 100)}%`,
                         background: SOURCE_APP_COLOR[row.key] ?? SOURCE_APP_COLOR.unknown
                       }}
                     />
                   ))}
                 </div>
-                <div className="dash-app-list">
-                  {dashboard.apps.map((row) => {
-                    const pct = Math.round((row.amount / Math.max(dashboard.totals.netSpend, 1)) * 100);
-                    return (
-                      <div className="dash-app-row" key={row.key}>
-                        <span className="dash-dot" style={{ background: SOURCE_APP_COLOR[row.key] ?? SOURCE_APP_COLOR.unknown }} />
-                        <span className="dash-app-name">{row.label}</span>
-                        <small>{row.count} order{row.count === 1 ? "" : "s"}</small>
-                        <strong className="dash-app-amount tabular">{money(row.amount)}</strong>
-                        <span className="dash-app-pct tabular">{pct}%</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className="dashboard-section">
-                <div className="dashboard-section-head">
-                  <h3>Top restaurants</h3>
-                  <span>{dashboard.restaurants.length} found</span>
-                </div>
-                <div className="dash-rest-list">
-                  {dashboard.restaurants.slice(0, 8).map((row, index) => (
-                    <div className="dash-rest-row" key={row.key}>
-                      <span className="dash-rest-rank tabular">{index + 1}</span>
-                      <span className="dash-rest-main">
-                        <span className="dash-rest-name-line">
-                          <strong>{row.label}</strong>
-                          <span className="dash-rest-amount tabular">{money(row.amount)}</span>
-                        </span>
-                        <span className="dash-rest-track">
-                          <i className="dash-rest-fill" style={{ width: `${Math.max(5, (row.amount / maxRestaurant) * 100)}%` }} />
-                        </span>
-                        <small>{row.count} order{row.count === 1 ? "" : "s"}</small>
-                      </span>
+                <div className="ol-app-list">
+                  {dashboard.apps.map((row) => (
+                    <div key={row.key}>
+                      <span><i style={{ background: SOURCE_APP_COLOR[row.key] ?? SOURCE_APP_COLOR.unknown }} />{row.label}</span>
+                      <strong className="tabular">{money(row.amount)}</strong>
                     </div>
                   ))}
                 </div>
               </section>
 
-              <section className="dash-insight-row">
-                <div className="dash-insight">
-                  <span className="dash-insight-label">Favorite</span>
-                  <strong>{dashboard.topRestaurant?.label ?? "Unknown"}</strong>
-                  <small>{dashboard.topRestaurant ? money(dashboard.topRestaurant.amount) : "No restaurant data"}</small>
+              <section className="ol-card">
+                <div className="ol-card-head">
+                  <h3>Top restaurants</h3>
+                  <span>{dashboard.restaurants.length} found</span>
                 </div>
-                <div className="dash-insight">
-                  <span className="dash-insight-label">Peak time</span>
+                <div className="ol-rank-list">
+                  {dashboard.restaurants.slice(0, 6).map((row, index) => (
+                    <div key={row.key}>
+                      <span className="ol-rank">{index + 1}</span>
+                      <span className="ol-rank-main">
+                        <strong>{row.label}</strong>
+                        <small>{row.count} orders</small>
+                        <i><b style={{ width: `${Math.max(6, (row.amount / maxRestaurant) * 100)}%` }} /></i>
+                      </span>
+                      <span className="ol-rank-money tabular">{money(row.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="ol-insight">
+                <div>
+                  <span>Favorite</span>
+                  <strong>{topRestaurant?.label ?? "Unknown"}</strong>
+                  <small>{topRestaurant ? money(topRestaurant.amount) : "No restaurant data"}</small>
+                </div>
+                <div>
+                  <span>Peak time</span>
                   <strong className="tabular">{dashboard.peakHour.label}</strong>
                   <small>{dashboard.peakHour.detail}</small>
                 </div>
               </section>
 
-              <section className="dashboard-section">
-                <div className="dashboard-section-head">
+              <section className="ol-card">
+                <div className="ol-card-head">
                   <h3>Week pattern</h3>
                   <span>{dashboard.busiestDay?.label ?? "Unknown"} highest</span>
                 </div>
-                <div className="dash-week">
+                <div className="ol-week">
                   {dashboard.week.map((row) => (
-                    <div className="dash-week-col" key={row.key}>
-                      <span className="dash-week-track">
-                        <i
-                          className={row.amount === maxWeekday && row.amount > 0 ? "dash-week-fill max" : "dash-week-fill"}
-                          style={{ height: `${row.amount > 0 ? Math.max(10, (row.amount / maxWeekday) * 56) : 4}px` }}
-                        />
-                      </span>
+                    <span key={row.key}>
+                      <i><b style={{ height: `${row.amount > 0 ? Math.max(7, (row.amount / maxWeekday) * 100) : 5}%` }} /></i>
                       <small>{row.label}</small>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="dashboard-section">
-                <div className="dashboard-section-head">
-                  <h3>Status</h3>
-                  <span>{money(dashboard.totals.refundedOrCancelled)} cancelled/refunded</span>
-                </div>
-                <div className="dash-status-grid">
-                  {dashboard.statuses.map((row) => (
-                    <div className="dash-status-row" key={row.key}>
-                      <Badge status={row.key} />
-                      <strong className="tabular">{row.count}</strong>
-                      <span className="tabular">{money(row.amount)}</span>
-                    </div>
+                    </span>
                   ))}
                 </div>
               </section>
             </>
           )}
 
-          <section className="dashboard-section">
-            <div className="dashboard-section-head">
-              <h3>{dashboard.isMonthlyTotalBatch ? "Monthly totals" : "Recent orders"}</h3>
-              <span>{dashboard.filteredOrders.length} {rowLabelPlural}</span>
+          <section className="ol-card">
+            <div className="ol-card-head">
+              <h3>Recent</h3>
+              <span>{dashboard.recent.length} orders</span>
             </div>
-            <div className="dash-order-list">
-              {dashboard.recent.slice(0, 12).map((order) => (
-                <article className="dash-order" key={order.id}>
-                  <i className="dash-order-app" style={{ background: SOURCE_APP_COLOR[order.source_app] ?? SOURCE_APP_COLOR.unknown }} />
-                  <div className="dash-order-body">
-                    <div className="dash-order-top">
+            <div className="ol-recent">
+              {dashboard.recent.slice(0, 12).map((order) => {
+                const appColor = SOURCE_APP_COLOR[order.source_app] ?? SOURCE_APP_COLOR.unknown;
+                const flagged = order.review_state === "needs_check";
+                return (
+                  <article key={order.id} className={flagged ? "flagged" : ""}>
+                    <i style={{ background: appColor }} />
+                    <div>
                       <strong>{order.restaurant_name || "Unknown restaurant"}</strong>
-                      <span className="dash-order-amount tabular">{money(orderAmount(order))}</span>
+                      <small>{firstItem(order.items_text)} · {fmtDateTime(order.ordered_at) || "Unknown time"}</small>
                     </div>
-                    <div className="dash-order-item">{firstItem(order.items_text)}</div>
-                    <div className="dash-order-meta">
-                      <span>{SOURCE_APP_LABEL[order.source_app] ?? order.source_app ?? "Unknown"}</span>
-                      <span>{fmtDateTime(order.ordered_at) || "Unknown time"}</span>
-                      <Badge status={order.review_state !== "ok" ? order.review_state : order.status} />
-                    </div>
-                  </div>
-                </article>
-              ))}
+                    <span className="tabular">{money(orderAmount(order))}</span>
+                    <b style={{ background: statusDot(order.status) }} title={STATUS_LABEL[order.status] ?? order.status} />
+                  </article>
+                );
+              })}
             </div>
           </section>
+
+          <button className="ol-export-shortcut">
+            <IconExport size={16} />
+            Export selected ledger
+          </button>
         </>
       )}
     </div>

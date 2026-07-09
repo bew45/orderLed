@@ -27,7 +27,7 @@ function Shell() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={tab === "home" ? "app-shell app-shell-dashboard" : "app-shell"}>
       {tab !== "home" && (
         <header className="app-header">
           <div>
