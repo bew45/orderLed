@@ -317,7 +317,13 @@ app.get("/api/batches/:id/export.csv", (req, res) => {
 
 app.get("/api/batches/:id/export.pdf", async (req, res) => {
   try {
-    sendFileBuffer(res, await buildPdfExport(req.params.id, { month: typeof req.query.month === "string" ? req.query.month : undefined }));
+    const style = req.query.style === "minimal" || req.query.style === "audit" || req.query.style === "midnight"
+      ? req.query.style
+      : undefined;
+    sendFileBuffer(res, await buildPdfExport(req.params.id, {
+      month: typeof req.query.month === "string" ? req.query.month : undefined,
+      style
+    }));
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
   }
@@ -326,8 +332,13 @@ app.get("/api/batches/:id/export.pdf", async (req, res) => {
 const port = Number(process.env.PORT || 8788);
 const host = process.env.HOST || "127.0.0.1";
 console.log(`[boot] calling app.listen(${port}, ${host})`);
-app.listen(port, host, () => {
+const httpServer = app.listen(port, host, () => {
   console.log(`[orderledger] http://${host}:${port}`);
-}).on("error", (err) => {
+});
+httpServer.on("error", (err: NodeJS.ErrnoException) => {
   console.error(`[boot] listen failed: ${err.message}`);
+  // Exit non-zero so the launcher (concurrently / the Telegram controller) sees the
+  // failure immediately instead of waiting out the whole startup timeout with a
+  // half-up runtime (frontend online, API dead).
+  process.exit(1);
 });
