@@ -5,8 +5,10 @@ export type BatchSummary = {
   screenshotsFailed: number;
   ordersTotal: number;
   ordersNeedingReview: number;
+  ordersBlocked: number;
   netSpend: number;
   completedSpend: number;
+  grossSpend: number;
   refundedOrCancelled: number;
 };
 
@@ -19,18 +21,89 @@ export type BatchListItem = {
   summary: BatchSummary;
 };
 
+export type RestaurantTally = { name: string; count: number; spend: number };
+
+export type MonthBucket = {
+  month: string;
+  orderCount: number;
+  netSpend: number;
+  completedSpend: number;
+  grossSpend: number;
+  refundedOrCancelled: number;
+  reviewCount: number;
+  byAppSpend: Record<string, number>;
+  byAppCount: Record<string, number>;
+  topRestaurants: RestaurantTally[];
+  firstDate: string;
+  lastDate: string;
+};
+
+export type LedgerDashboard = {
+  confirmedNet: number;
+  grossSpend: number;
+  refundedOrCancelled: number;
+  orderCount: number;
+  blockedCount: number;
+  restaurantCount: number;
+  monthCount: number;
+  byAppSpend: Record<string, number>;
+  months: MonthBucket[];
+};
+
+export type BatchRollup = {
+  batchId: string;
+  screenshotsTotal: number;
+  screenshotsProcessed: number;
+  screenshotsFailed: number;
+  newOrders: number;
+  mergedOrders: number;
+  reviewCount: number;
+  blockedCount: number;
+  netPosted: number;
+  periods: string[];
+};
+
+export type OrderObservation = {
+  id: string;
+  batch_id: string;
+  screenshot_id?: string;
+  order_id?: string;
+  screen_order: number;
+  raw_json: string;
+  normalized_json: string;
+  attention_reasons_json: string;
+  created_at: number;
+};
+
+export type DatePrecision = "full" | "month" | "none";
+export type ReviewTier = "clean" | "review" | "blocked";
+export type OrderFlag = {
+  code: string;
+  field: string;
+  severity: "info" | "warn" | "block";
+  detail?: string;
+};
+
 export type OrderRow = {
   id: string;
   batch_id: string;
   source_app: string;
   ordered_at: string;
+  date_precision: DatePrecision;
   restaurant_name: string;
+  branch: string;
   total_amount: number;
   status: string;
   refund_amount: number;
   net_amount: number;
+  item_count: number;
+  currency: string;
   items_text: string;
+  confidence: number;
+  review_tier: ReviewTier;
   review_state: "ok" | "needs_check" | "corrected";
+  flags_json: string;
+  user_edited: 0 | 1;
   duplicate_key: string;
   source_screenshot_ids_json: string;
   evidence_json: string;
@@ -80,6 +153,8 @@ export type ScreenshotRow = {
   llm_status: ProcessingStepStatus;
   llm_error: string;
   llm_completed_at: number;
+  llm_usage_json: string;
+  llm_cost_usd: number;
   processed_at: number;
   error: string;
   created_at: number;
@@ -107,13 +182,16 @@ export type AppSettings = {
   promptpay_amount_locked: boolean;
   promptpay_id: string;
   promptpay_recipient_name: string;
+  pdf_style: PdfStyle;
 };
+
+export type PdfStyle = "midnight" | "minimal" | "audit";
 
 export type ProviderModel = {
   id: string;
   name: string;
   context_length: number;
-  pricing?: Record<string, unknown>;
+  pricing?: { prompt?: string | number; completion?: string | number; image?: string | number; request?: string | number };
 };
 
 export type UploadResult = {
@@ -168,6 +246,13 @@ export const endpoints = {
 
   listAllOrders: () => api<{ orders: OrderRow[] }>("/api/orders"),
 
+  ledgerDashboard: () => api<{ dashboard: LedgerDashboard }>("/api/ledger/dashboard"),
+  ledgerOrders: (period?: string) =>
+    api<{ orders: OrderRow[] }>(`/api/ledger/orders${period ? `?period=${encodeURIComponent(period)}` : ""}`),
+  batchRollup: (batchId: string) => api<{ rollup: BatchRollup }>(`/api/batches/${batchId}/rollup`),
+  orderObservations: (orderId: string) =>
+    api<{ observations: OrderObservation[] }>(`/api/orders/${orderId}/observations`),
+
   listScreenshots: (batchId: string) =>
     api<{ screenshots: ScreenshotRow[]; summary: BatchSummary }>(`/api/batches/${batchId}/screenshots`),
 
@@ -187,9 +272,41 @@ export const endpoints = {
   screenshotImageUrl: (id: string) => `/api/screenshots/${id}/image`,
   deleteScreenshot: (id: string) => api<{ ok: true }>(`/api/screenshots/${id}`, { method: "DELETE" }),
 
-  exportUrl: (batchId: string, kind: "xls" | "csv" | "pdf", month?: string) =>
-    `/api/batches/${batchId}/export.${kind}${month ? `?month=${encodeURIComponent(month)}` : ""}`
+  exportUrl: (batchId: string, kind: "xls" | "csv" | "pdf", month?: string, pdfStyle?: PdfStyle) => {
+    const query = new URLSearchParams();
+    if (month) query.set("month", month);
+    if (kind === "pdf" && pdfStyle) query.set("style", pdfStyle);
+    const suffix = query.toString();
+    return `/api/batches/${batchId}/export.${kind}${suffix ? `?${suffix}` : ""}`;
+  },
+
+  ledgerExportUrl: (kind: "xls" | "csv" | "pdf", period?: string, pdfStyle?: PdfStyle) => {
+    const query = new URLSearchParams();
+    if (period && period !== "all") query.set("period", period);
+    if (kind === "pdf" && pdfStyle) query.set("style", pdfStyle);
+    const suffix = query.toString();
+    return `/api/ledger/export.${kind}${suffix ? `?${suffix}` : ""}`;
+  }
 };
+
+export function parseLlmUsage(value: string) {
+  try {
+    const raw = JSON.parse(value || "{}");
+    return {
+      promptTokens: Number(raw?.promptTokens ?? 0) || 0,
+      completionTokens: Number(raw?.completionTokens ?? 0) || 0,
+      totalTokens: Number(raw?.totalTokens ?? 0) || 0,
+      costUsd: Number(raw?.costUsd ?? 0) || 0
+    };
+  } catch {
+    return { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: 0 };
+  }
+}
+
+export function modelPricePerMillion(value: string | number | undefined) {
+  const rate = Number(value);
+  return Number.isFinite(rate) && rate > 0 ? rate * 1_000_000 : null;
+}
 
 export function parseAmountCheck(value: string): AmountCheck | null {
   try {
@@ -212,6 +329,44 @@ export function parseAmountCheck(value: string): AmountCheck | null {
   }
 }
 
+export function parseFlags(value: string | null | undefined): OrderFlag[] {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((f) => f && typeof f.code === "string")
+      .map((f) => ({
+        code: String(f.code),
+        field: String(f.field ?? ""),
+        severity: f.severity === "block" || f.severity === "warn" ? f.severity : "info",
+        detail: f.detail ? String(f.detail) : undefined
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/** Short Thai chip label for a flag, falling back to the flag's own detail then code. */
+export function flagLabel(flag: OrderFlag): string {
+  const LABELS: Record<string, string> = {
+    amount_missing: "อ่านยอดไม่ได้",
+    amount_unverified: "OCR ยืนยันยอดไม่ได้",
+    date_missing: "อ่านวันที่ไม่ได้",
+    date_relative: "วันที่ไม่ชัด",
+    date_month_only: "รู้แค่เดือน",
+    status_unknown: "ไม่รู้สถานะ",
+    restaurant_missing: "ไม่มีชื่อร้าน",
+    app_unknown: "ไม่รู้แอป",
+    card_partial: "การ์ดถูกตัด",
+    multi_weak: "หลายจุดไม่ชัด",
+    dup_conflict: "อาจซ้ำ",
+    refund_exceeds_total: "ยอดคืน > ยอดรวม",
+    restaurant_truncated: "ชื่อร้านถูกตัด",
+    orphaned: "ต้นฉบับถูกลบ"
+  };
+  return LABELS[flag.code] ?? flag.detail ?? flag.code;
+}
+
 export function firstScreenshotId(order: OrderRow): string | null {
   try {
     const ids = JSON.parse(order.source_screenshot_ids_json || "[]");
@@ -231,11 +386,22 @@ export function fmtMonthLabel(month: string) {
   return new Date(year, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-export function fmtDateTime(value: string) {
-  if (!value) return "";
+export function fmtDateTime(value: string, precision?: DatePrecision) {
+  if (!value || precision === "none") return "";
+  // Month-only (Shopee has no time, or a sibling-inferred month): show the month.
+  if (precision === "month" || /^\d{4}-\d{2}$/.test(value)) {
+    return fmtMonthLabel(value.slice(0, 7));
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const opts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short" };
+  // Bug B7: a bare date (no real time, e.g. Shopee) must not render "00:00".
+  const hasTime = /T(?!00:00(?::00)?$)\d{2}:\d{2}/.test(value);
+  if (hasTime) {
+    opts.hour = "2-digit";
+    opts.minute = "2-digit";
+  }
+  return date.toLocaleString("en-GB", opts);
 }
 
 export const SOURCE_APP_LABEL: Record<string, string> = {

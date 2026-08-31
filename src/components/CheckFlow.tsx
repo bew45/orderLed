@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   endpoints,
   fmtMoney,
+  flagLabel,
   parseAmountCheck,
+  parseFlags,
   STATUS_LABEL,
   type OrderRow,
   type ScreenshotRow
@@ -434,6 +436,22 @@ export function CheckFlow(props: {
                     <button className="check-row-main" onClick={() => startEdit(order)} aria-label={`Edit ${order.restaurant_name || "order"}`}>
                       <strong>{order.restaurant_name || "Unknown restaurant"}</strong>
                       <span className="tabular">THB {fmtMoney(order.total_amount)}</span>
+                      {(() => {
+                        const flags = parseFlags(order.flags_json);
+                        if (flags.length === 0) return null;
+                        return (
+                          <span className="check-row-flags">
+                            {flags.slice(0, 3).map((flag) => (
+                              <span
+                                key={flag.code}
+                                className={flag.severity === "block" ? "mini-chip block" : "mini-chip"}
+                              >
+                                {flagLabel(flag)}
+                              </span>
+                            ))}
+                          </span>
+                        );
+                      })()}
                     </button>
                     <button
                       className="check-row-edit-btn"

@@ -24,26 +24,10 @@ function parseAmount(raw: string) {
   return rounded >= 20 && rounded <= 100000 ? rounded : 0;
 }
 
-function isLikelyNoise(text: string) {
-  const raw = text.trim();
-  if (!raw) return true;
-  if (/\b\d{1,2}:\d{2}\b/.test(raw)) return true;
-  if (/\b20\d{2}\b/.test(raw)) return true;
-  if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(raw)) return true;
-  if (/(?:grabcoins|coins|coin|\+|%)/i.test(raw)) return true;
-  if (/\d+\s*[\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23]/.test(raw)) return true;
-  return false;
-}
-
-function isRightSidePriceRow(row: OcrRow) {
-  return (row.bbox?.x ?? 0) >= 0.68;
-}
-
 function extractFromRow(row: OcrRow): AmountCandidate[] {
   const candidates: AmountCandidate[] = [];
   const seen = new Set<string>();
   const text = row.text || "";
-  if (!isRightSidePriceRow(row)) return candidates;
 
   // Dumb approach: find any currency symbol ($, ฿, THB) followed by digits
   const currencyRe = /(?:\u0e3f|THB|\$)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi;
@@ -58,22 +42,30 @@ function extractFromRow(row: OcrRow): AmountCandidate[] {
     candidates.push({ amount, text: row.text, rowId: row.id, bbox: row.bbox });
   }
 
-  // Fallback: if no currency symbol found and text is not noise, try bare numbers
-  if (candidates.length > 0 || isLikelyNoise(text)) {
-    return candidates;
-  }
-
-  const bareNumberRe = /(?:^|\s)([0-9]{2,6}(?:\.[0-9]{1,2})?)(?:\s|$)/g;
-  while ((match = bareNumberRe.exec(text))) {
-    const amount = parseAmount(match[1]);
-    if (!amount) continue;
-    const key = `${row.id}:${amount.toFixed(2)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    candidates.push({ amount, text: row.text, rowId: row.id, bbox: row.bbox });
-  }
-
   return candidates;
+}
+
+/**
+ * Per-order amount trust signal (see docs/REDESIGN_PLAN.md §4.1). Replaces the
+ * binary per-screenshot multiset verdict (bug B1) — each card is judged alone.
+ *   verified — the model's amount appears as a number token in this screenshot's OCR
+ *   weak     — an amount is present but OCR could not corroborate it
+ *   missing  — the model returned no usable amount
+ */
+export function verifyOrderAmount(input: {
+  totalAmount: number;
+  ocrRows: OcrRow[];
+  ocrAvailable: boolean;
+}): "verified" | "weak" | "missing" {
+  if (!(input.totalAmount > 0)) return "missing";
+  if (!input.ocrAvailable || input.ocrRows.length === 0) return "weak";
+  const cents = Math.round(input.totalAmount * 100);
+  const text = input.ocrRows.map((row) => row.text).join("  ");
+  for (const token of text.matchAll(/\d[\d,]*(?:\.\d{1,2})?/g)) {
+    const value = Number(token[0].replace(/,/g, ""));
+    if (Number.isFinite(value) && Math.round(value * 100) === cents) return "verified";
+  }
+  return "weak";
 }
 
 export function scanAmountCandidates(rows: OcrRow[]) {

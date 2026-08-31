@@ -22,19 +22,32 @@ import {
   deleteOrder,
   deleteScreenshot,
   getBatch,
+  getBatchRollup,
   getBatchSummary,
+  getLedgerDashboard,
+  getLedgerOrders,
   getScreenshot,
   getAppSettings,
+  getOrder,
   listAllOrders,
   listBatches,
+  listOrderObservations,
   listOrders,
+  listScreenshotObservations,
   listScreenshots,
   saveAppSettings,
   screenshotHashExists,
   updateOrder
 } from "./store";
 console.log("[boot] store loaded");
-import { buildCsvExport, buildExcelExport, buildPdfExport } from "./export";
+import {
+  buildCsvExport,
+  buildExcelExport,
+  buildLedgerCsvExport,
+  buildLedgerExcelExport,
+  buildLedgerPdfExport,
+  buildPdfExport
+} from "./export";
 console.log("[boot] export loaded (puppeteer import resolved)");
 
 const app = express();
@@ -248,6 +261,50 @@ app.get("/api/orders", (_req, res) => {
   }
 });
 
+app.get("/api/ledger/dashboard", (_req, res) => {
+  try {
+    res.json({ dashboard: getLedgerDashboard() });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/ledger/orders", (req, res) => {
+  try {
+    const period = typeof req.query.period === "string" ? req.query.period : undefined;
+    res.json({ orders: getLedgerOrders(period) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/batches/:id/rollup", (req, res) => {
+  try {
+    if (!getBatch(req.params.id)) return void res.status(404).json({ error: "Batch not found" });
+    res.json({ rollup: getBatchRollup(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/orders/:id/observations", (req, res) => {
+  try {
+    if (!getOrder(req.params.id)) return void res.status(404).json({ error: "Order not found" });
+    res.json({ observations: listOrderObservations(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/screenshots/:id/observations", (req, res) => {
+  try {
+    if (!getScreenshot(req.params.id)) return void res.status(404).json({ error: "Screenshot not found" });
+    res.json({ observations: listScreenshotObservations(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/api/batches/:id/orders", (req, res) => {
   try {
     if (!getBatch(req.params.id)) return void res.status(404).json({ error: "Batch not found" });
@@ -260,18 +317,15 @@ app.get("/api/batches/:id/orders", (req, res) => {
 app.post("/api/orders", (req, res) => {
   try {
     const body = req.body ?? {};
-    const totalAmount = Math.max(0, Number(body.total_amount ?? 0) || 0);
-    const refundAmount = Math.max(0, Number(body.refund_amount ?? 0) || 0);
     const order = createManualOrder({
       batchId: String(body.batch_id || ""),
       sourceScreenshotId: String(body.source_screenshot_id || ""),
       sourceApp: body.source_app || "unknown",
       orderedAt: String(body.ordered_at || new Date().toISOString().slice(0, 19)),
       restaurantName: String(body.restaurant_name || "Unknown restaurant").trim(),
-      totalAmount,
+      totalAmount: body.total_amount,
       status: body.status || "completed",
-      refundAmount,
-      netAmount: Math.max(0, Number(body.net_amount ?? totalAmount - refundAmount) || 0),
+      refundAmount: body.refund_amount,
       itemsText: String(body.items_text || "")
     });
     res.json({ order });
@@ -324,6 +378,36 @@ app.get("/api/batches/:id/export.pdf", async (req, res) => {
       month: typeof req.query.month === "string" ? req.query.month : undefined,
       style
     }));
+  } catch (error: any) {
+    res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+const ledgerPeriod = (req: express.Request) =>
+  typeof req.query.period === "string" ? req.query.period : undefined;
+
+app.get("/api/ledger/export.xls", (req, res) => {
+  try {
+    sendFileBuffer(res, buildLedgerExcelExport({ period: ledgerPeriod(req) }));
+  } catch (error: any) {
+    res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+app.get("/api/ledger/export.csv", (req, res) => {
+  try {
+    sendFileBuffer(res, buildLedgerCsvExport({ period: ledgerPeriod(req) }));
+  } catch (error: any) {
+    res.status(errorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+app.get("/api/ledger/export.pdf", async (req, res) => {
+  try {
+    const style = req.query.style === "minimal" || req.query.style === "audit" || req.query.style === "midnight"
+      ? req.query.style
+      : undefined;
+    sendFileBuffer(res, await buildLedgerPdfExport({ period: ledgerPeriod(req), style }));
   } catch (error: any) {
     res.status(errorStatus(error.message)).json({ error: error.message });
   }

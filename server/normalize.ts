@@ -1,4 +1,4 @@
-import type { ExtractedOrder, OrderStatus, OcrRow, SourceApp } from "./types";
+import type { DatePrecision, ExtractedOrder, OrderStatus, SourceApp } from "./types";
 
 const THAI_MONTHS: Record<string, string> = {
   "ม.ค.": "01",
@@ -93,28 +93,82 @@ export function amount(value: unknown) {
   return Math.round(Number(match[1]) * 100) / 100;
 }
 
-export function normalizeOrderedAt(value: unknown, fallbackMonth: string) {
+type NormalizedDate = {
+  /** "" | "YYYY-MM" | "YYYY-MM-DDTHH:MM:SS" */
+  value: string;
+  precision: DatePrecision;
+};
+
+const RELATIVE_DATE_RE =
+  /\b(yesterday|today|tomorrow|(?:a|\d+)\s*(?:min(?:ute)?s?|hours?|days?|weeks?)\s*ago|just now)\b|เมื่อวาน|วันนี้|พรุ่งนี้|(?:ที่แล้ว|ก่อน)$|นาทีที่แล้ว|ชั่วโมงที่แล้ว|วันก่อน/i;
+
+/** The 3 target apps' history lists always show an absolute date; relative text is abnormal (D5). */
+export function isRelativeDateText(raw: string) {
+  return RELATIVE_DATE_RE.test(raw.trim());
+}
+
+function validDate(year: number, month: number, day: number, hour: number, minute: number) {
+  if (year < 2000 || year > 2200 || month < 1 || month > 12 || hour < 0 || hour > 23 || minute < 0 || minute > 59) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function isoDate(year: number, month: number, day: number, hour = 0, minute = 0) {
+  if (!validDate(year, month, day, hour, minute)) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
+}
+
+function gregorianYear(raw: string) {
+  const year = Number(raw);
+  if (!Number.isFinite(year)) return 0;
+  // Thai delivery apps normally show Buddhist Era years. Keep a generous upper
+  // bound so a malformed OCR year cannot silently become a plausible Gregorian one.
+  if (year >= 2400 && year <= 2800) return year - 543;
+  return raw.length === 2 ? 2000 + year : year;
+}
+
+function parseOrderedAt(value: unknown): string | null {
   const raw = String(value ?? "").trim();
-  if (!raw) return `${fallbackMonth || "1970-01"}-01T00:00:00`;
+  if (!raw) return null;
   const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}T${iso[4] ?? "00"}:${iso[5] ?? "00"}:00`;
+  if (iso) return isoDate(Number(iso[1]), Number(iso[2]), Number(iso[3]), Number(iso[4] ?? 0), Number(iso[5] ?? 0));
 
   const en = raw.match(/(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{2,4})(?:,?\s+(\d{1,2}):(\d{2}))?/);
   if (en) {
-    const day = en[1].padStart(2, "0");
-    const month = EN_MONTHS[en[2].slice(0, 3).toLowerCase()] ?? "01";
-    const year = en[3].length === 2 ? `20${en[3]}` : en[3];
-    return `${year}-${month}-${day}T${(en[4] ?? "00").padStart(2, "0")}:${en[5] ?? "00"}:00`;
+    const month = Number(EN_MONTHS[en[2].slice(0, 3).toLowerCase()]);
+    return isoDate(gregorianYear(en[3]), month, Number(en[1]), Number(en[4] ?? 0), Number(en[5] ?? 0));
   }
 
   const th = raw.match(/(\d{1,2})\s*([ก-๙.]+)\s*(\d{4})(?:,?\s+(\d{1,2}):(\d{2}))?/);
   if (th) {
-    const day = th[1].padStart(2, "0");
-    const month = THAI_MONTHS[th[2]] ?? THAI_MONTHS[th[2].replace(/\./g, "")] ?? "01";
-    return `${th[3]}-${month}-${day}T${(th[4] ?? "00").padStart(2, "0")}:${th[5] ?? "00"}:00`;
+    const month = Number(THAI_MONTHS[th[2]] ?? THAI_MONTHS[th[2].replace(/\./g, "")]);
+    return isoDate(gregorianYear(th[3]), month, Number(th[1]), Number(th[4] ?? 0), Number(th[5] ?? 0));
   }
 
-  return `${fallbackMonth || "1970-01"}-01T00:00:00`;
+  return null;
+}
+
+const FUTURE_SLACK_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Parse an on-screen date string. No batch-month fallback (bug B6): if we cannot
+ * read it, or it is relative text (D5), or it lands in the future, the order gets
+ * an empty date and precision "none" so it lands in the "unknown month" bucket
+ * instead of a fabricated real month.
+ */
+function normalizedDate(value: unknown, now: number = Date.now()): NormalizedDate {
+  const raw = String(value ?? "").trim();
+  if (!raw) return { value: "", precision: "none" };
+  if (isRelativeDateText(raw)) return { value: "", precision: "none" };
+  const parsed = parseOrderedAt(raw);
+  if (!parsed) return { value: "", precision: "none" };
+  const ts = Date.parse(parsed);
+  if (Number.isFinite(ts) && ts > now + FUTURE_SLACK_MS) return { value: "", precision: "none" };
+  return { value: parsed, precision: "full" };
+}
+
+export function normalizeOrderedAt(value: unknown, now?: number) {
+  return normalizedDate(value, now).value;
 }
 
 export function normalizeRestaurant(value: unknown) {
@@ -143,34 +197,82 @@ export function netAmount(status: OrderStatus, total: number, refund: number) {
   return total;
 }
 
-export function evidenceFromIds(evidence: Record<string, string[]> | undefined, rows: OcrRow[], screenshotId: string) {
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const out: Record<string, unknown> = {};
-  for (const [field, ids] of Object.entries(evidence ?? {})) {
-    const found = ids.map((id) => byId.get(id)).filter(Boolean) as OcrRow[];
-    if (!found.length) continue;
-    out[field] = found.map((row) => ({ text: row.text, screenshotId, bbox: row.bbox, confidence: row.confidence }));
-  }
-  return out;
+export function isTruncatedName(raw: string) {
+  return /(?:…|\.\.\.)\s*$/.test(String(raw ?? "").trim());
 }
 
-export function normalizeExtractedOrder(input: ExtractedOrder, fallback: { month: string; sourceApp: SourceApp }) {
-  const sourceApp = normalizeSourceApp(input.sourceApp ?? fallback.sourceApp);
-  const restaurantName = normalizeRestaurant(input.restaurantName);
-  const totalAmount = amount(input.totalAmount);
+export type NormalizedOrder = {
+  sourceApp: SourceApp;
+  orderedAt: string;
+  datePrecision: DatePrecision;
+  restaurantName: string;
+  restaurantTruncated: boolean;
+  branch: string;
+  totalAmount: number;
+  totalAmountText: string;
+  refundAmount: number;
+  netAmount: number;
+  status: OrderStatus;
+  itemCount: number;
+  itemsText: string;
+  partial: boolean;
+  attentionReasons: string[];
+  duplicateKey: string;
+};
+
+export function normalizeExtractedOrder(
+  input: ExtractedOrder,
+  ctx: { sourceApp: SourceApp; uniqueSeed?: string; now?: number }
+): NormalizedOrder {
+  const sourceApp = normalizeSourceApp(input.sourceApp ?? ctx.sourceApp);
+  const restaurantRaw = String(input.restaurantName ?? "");
+  const restaurantName = normalizeRestaurant(restaurantRaw);
+  const restaurantTruncated = isTruncatedName(restaurantRaw) || isTruncatedName(restaurantName);
+  const branch = normalizeRestaurant(input.branch);
+  const totalAmount = amount(input.totalAmount ?? input.totalAmountText);
+  const totalAmountText = String(input.totalAmountText ?? "").trim();
   const refundAmount = amount(input.refundAmount);
   const status = normalizeOrderStatus(input.status, `${restaurantName} ${input.itemsText ?? ""}`);
-  const orderedAt = normalizeOrderedAt(input.orderedAt, fallback.month);
+  const dateInput = String(input.orderedAtText ?? "").trim() || input.orderedAt;
+  const date = normalizedDate(dateInput, ctx.now);
+  const orderedAt = date.value;
   const net = netAmount(status, totalAmount, refundAmount);
+  const itemCount = Math.max(0, Math.round(Number(input.itemCount) || 0));
+  const partial = Boolean(input.partial);
+
+  const attentionReasons: string[] = [];
+  if (date.precision === "none") {
+    attentionReasons.push(isRelativeDateText(String(dateInput ?? "")) ? "date_relative" : "date_missing");
+  }
+  if (sourceApp === "unknown") attentionReasons.push("source_app_unknown");
+  if (!restaurantName) attentionReasons.push("restaurant_unreadable");
+  if (status === "unknown") attentionReasons.push("status_unknown");
+  if (refundAmount > totalAmount) attentionReasons.push("refund_exceeds_total");
+  if (partial) attentionReasons.push("card_partial");
+  if (restaurantTruncated) attentionReasons.push("restaurant_truncated");
+
+  // Strong identity requires a real date + known app + a restaurant name. Weak
+  // identities never merge (bug B12 mitigation): a re-read reuses the same seed,
+  // an overlapping screenshot stays a separate row for the user to compare.
+  const strongIdentity = date.precision !== "none" && sourceApp !== "unknown" && Boolean(restaurantName);
   return {
     sourceApp,
     orderedAt,
+    datePrecision: date.precision,
     restaurantName,
+    restaurantTruncated,
+    branch,
     totalAmount,
-    status,
+    totalAmountText,
     refundAmount,
     netAmount: net,
+    status,
+    itemCount,
     itemsText: String(input.itemsText ?? "").trim(),
-    duplicateKey: duplicateKey({ sourceApp, orderedAt, restaurantName, totalAmount })
+    partial,
+    attentionReasons,
+    duplicateKey: strongIdentity
+      ? duplicateKey({ sourceApp, orderedAt, restaurantName, totalAmount })
+      : `unresolved|${ctx.uniqueSeed || `${sourceApp}|${orderedAt}|${restaurantName}|${totalAmount.toFixed(2)}`}`
   };
 }

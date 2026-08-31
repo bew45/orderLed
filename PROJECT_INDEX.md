@@ -67,13 +67,13 @@ Main point: upload should show the file list first; Read is the explicit extract
 
 ### Extraction
 
-- `server/extraction/process.ts` - batch processing orchestrator: OCR -> OpenRouter -> normalize -> amount check -> upsert, per screenshot, sequentially (not parallel; each screenshot commits to the DB as soon as it finishes, so partial results appear via the 5s `AppData` poll even while a multi-screenshot batch is still running).
-- `server/extraction/openrouter.ts` - sole order extractor (no fallback). Prompt asks for `sourceApp`, one order per visible card, status, and an `evidence` map of OCR row ids per field; also instructs the model to list orders in the same top-to-bottom order the cards appear on screen (for parity with the OCR scanner's position-sorted list). Throws if no `openrouter_api_key` is configured.
+- `server/extraction/process.ts` - batch processing orchestrator: OCR -> OpenRouter -> normalize -> amount check -> upsert. OCR remains single-worker/FIFO; each screenshot persists independently for partial progress.
+- `server/extraction/openrouter.ts` - sole order extractor (no fallback). Prompt asks for `sourceApp`, one order per visible card, status, and strict top-to-bottom `screenOrder`. It receives the image only; OCR-row field evidence is not yet part of the request and is a planned accuracy upgrade. Throws if no `openrouter_api_key` is configured.
 - `server/extraction/amount-check.ts` - `scanAmountCandidates(rows)`: regex/heuristic scan of OCR rows for THB amounts (filters noise like timestamps/coins, range 20-100000). `compareAmounts({ aiCandidates, scannerCandidates })`: multiset (bag) diff, order-independent — returns `AmountCheck` with `state` (`matched`/`mismatch`/`unavailable`), `missingFromAi`/`missingFromScanner`, sums, and reasons.
-- `server/ocr/ocr-runner.ts` - PaddleOCR process runner and queue (single persistent worker, FIFO, per-request timeout, 3-strike init circuit breaker). Optional: failures here don't block extraction, only degrade amount-check to `"unavailable"`. Default python resolves to the project `.venv-ocr` when settings/env don't override.
+- `server/ocr/ocr-runner.ts` - PaddleOCR process runner and queue (single persistent worker, FIFO, per-request timeout, 3-strike init circuit breaker). Optional: failures here don't block extraction, only degrade amount-check to `"unavailable"`. Default python resolves to the project `.venv-ocr` (CPU fallback) only when settings/env don't override; the default settings/env now point at the GPU venv, see `AGENTS.md` Known Issues.
 - `scripts/paddle_ocr_worker.py` - Python OCR worker (auto GPU→CPU fallback at init; reports the actual device in its ready payload).
 - `scripts/ocr-smoke.ts` - `npx tsx scripts/ocr-smoke.ts` runs the real OCR path against the latest uploaded screenshots (rows + scanned amounts + timing).
-- `scripts/setup-ocr.ps1` - Windows OCR environment setup (`.venv-ocr`, pinned `paddlepaddle==3.2.2` — do not upgrade to 3.3.x, see `AGENTS.md` Known Issues).
+- `scripts/setup-ocr.ps1` - Windows OCR environment setup for the **CPU fallback** venv (`.venv-ocr`, pinned `paddlepaddle==3.2.2` — do not upgrade to 3.3.x). The default runtime env is GPU via the shared Muse venv; see `AGENTS.md` Known Issues for the DLL hardlink fix required for GPU to work.
 
 ## HTTP API
 
@@ -105,7 +105,7 @@ Base backend: `http://127.0.0.1:8788`
 4. Duplicate screenshots are skipped by content hash.
 5. `ImportScreen` shows uploaded screenshots immediately, including delete actions.
 6. User taps Read; `ImportScreen` calls `processActiveBatch(false)` for unread screenshots or `processActiveBatch(true)` for re-read all.
-7. `server/extraction/process.ts` clears stale rows for each screenshot, runs OCR amount scanning, and runs OpenRouter order extraction (per screenshot, sequentially).
+7. `server/extraction/process.ts` clears only machine-owned rows for each screenshot (human-confirmed/corrected rows are preserved), runs OCR amount scanning, and starts OpenRouter order extraction for the batch.
 8. `compareAmounts` cross-checks AI amounts against OCR-scanned amounts; the full result is stored as `amount_check_state`/`amount_check_json` on the screenshot, and a trimmed copy (`state`/`reasons`/`aiAmounts`/`scannerAmounts`) is embedded in each order's `evidence_json.amountCheck`.
 9. `normalizeExtractedOrder` produces canonical order fields; `reviewStateFromAmountCheck` maps the amount-check state to the order's `review_state` (`matched` -> `ok`, anything else -> `needs_check`).
 10. `upsertOrder` stores rows and merges duplicates by duplicate key.
@@ -139,8 +139,9 @@ Important frontend order fields:
 - `net_amount`
 - `items_text`
 - `review_state` - `"ok" | "needs_check" | "corrected"`. No `confidence` field exists or ever existed on orders.
-- `duplicate_key`, `source_screenshot_ids_json` - dedupe/merge bookkeeping. `firstScreenshotId(order)` (`src/api.ts`) reads the first id for display; an order's evidence can in principle span more than one screenshot id, but in practice each order maps to the screenshot it was extracted from.
-- `evidence_json` - `{ restaurant, date, amount, status }` OCR-row evidence plus `amountCheck: { state, reasons, aiAmounts, scannerAmounts }` (trimmed; the full `missingFromAi`/`missingFromScanner`/sums/candidates live only on the parent screenshot's `amount_check_json`).
+- `user_edited` - `0 | 1`; a human-confirmed, corrected, or manually added row is protected from deletion/replacement on a re-read.
+- `duplicate_key`, `source_screenshot_ids_json` - dedupe/merge bookkeeping. Weak identities (missing date, app, or restaurant) use a screenshot-local key and never merge automatically. `firstScreenshotId(order)` (`src/api.ts`) reads the first id for display; an order's evidence can in principle span more than one screenshot id, but in practice each order maps to the screenshot it was extracted from.
+- `evidence_json` - currently `{ screenOrder, amountCheck, attentionReasons }`. `amountCheck` contains the trimmed state/reasons/AI/OCR amount lists; the full `missingFromAi`/`missingFromScanner`/sums/candidates live on the parent screenshot's `amount_check_json`. Field-level OCR evidence is the next planned data-model upgrade.
 
 ## Screenshot Fields
 
@@ -213,4 +214,4 @@ Manual smoke (for the user, or when explicitly asked to drive the app):
 9. open Dashboard and confirm summary updates
 10. export `.xls`, `.csv`, `.pdf`
 
-Local PaddleOCR works as of 2026-07-10 via the project `.venv-ocr` (paddle 3.2.2, CPU). Quick check: `npx tsx scripts/ocr-smoke.ts`. If OCR ever breaks again it is non-blocking: amount-check degrades to `"unavailable"` (more rows land in `needs_check`) but extraction itself continues (see `AGENTS.md` -> Known Issues).
+Local PaddleOCR works as of 2026-07-10 on **GPU** (shared Muse `paddlepaddle-gpu` venv, RTX 3060 Ti, ~0.3s/screenshot once warm). Quick check: `npx tsx scripts/ocr-smoke.ts`. A CPU fallback venv (`.venv-ocr`, paddle 3.2.2, ~8–13s/screenshot) is kept as backup. If OCR ever breaks again it is non-blocking: amount-check degrades to `"unavailable"` (more rows land in `needs_check`) but extraction itself continues (see `AGENTS.md` -> Known Issues for the GPU DLL fix).

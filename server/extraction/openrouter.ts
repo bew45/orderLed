@@ -7,6 +7,7 @@ import type { ExtractedOrder, Screenshot, SourceApp } from "../types";
 type ExtractionResult = {
   sourceApp: SourceApp;
   orders: ExtractedOrder[];
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number; costUsd: number };
 };
 
 function baseUrl() {
@@ -38,6 +39,38 @@ function extractJson(raw: string) {
   }
 }
 
+function str(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function num(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Coerce the model's per-order objects into ExtractedOrder shape; never drop a card. */
+function sanitizeOrders(value: unknown): ExtractedOrder[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((raw, index): ExtractedOrder => {
+    const order = (raw ?? {}) as Record<string, unknown>;
+    const screenOrder = Number(order.screenOrder);
+    return {
+      screenOrder: Number.isInteger(screenOrder) && screenOrder > 0 ? screenOrder : index + 1,
+      orderedAt: str(order.orderedAt) || undefined,
+      orderedAtText: str(order.orderedAtText) || undefined,
+      restaurantName: str(order.restaurantName),
+      branch: str(order.branch),
+      totalAmount: num(order.totalAmount),
+      totalAmountText: str(order.totalAmountText) || undefined,
+      status: str(order.status) as ExtractedOrder["status"],
+      refundAmount: num(order.refundAmount),
+      itemCount: Math.max(0, Math.round(num(order.itemCount))),
+      itemsText: str(order.itemsText),
+      partial: order.partial === true
+    };
+  });
+}
+
 export async function extractWithOpenRouter(input: {
   screenshot: Screenshot;
   sourceAppGuess: SourceApp;
@@ -46,6 +79,7 @@ export async function extractWithOpenRouter(input: {
   const key = getAppSettings().openrouter_api_key;
   if (!key) return null;
 
+  const referenceDate = new Date(input.screenshot.created_at || Date.now()).toISOString().slice(0, 10);
   const prompt = [
     "You extract food delivery order history cards from mobile screenshots.",
     "Return JSON only. Do not explain.",
@@ -57,28 +91,36 @@ export async function extractWithOpenRouter(input: {
     "- shopeefood: app-wide accent color is orange/red (buttons, active tab underline, icons all orange); Thai header \"คำสั่งซื้อของฉัน\"; two tabs \"คำสั่งซื้ออาหาร\" / \"ดีลล็อกราคา\"; status text \"จัดส่งสำเร็จแล้ว\"; orange button \"สั่งใหม่\".",
     "- If the whole order-history page is Thai-only with no visible English app/navigation labels, prefer shopeefood over unknown.",
     "If the screenshot is mostly orange/red, it is shopeefood. If green, use the header text and tab labels above to tell grab and lineman apart. Only return unknown if truly no cues match.",
-    "Each visible order card should become one order.",
-    "Ignore navigation, battery banners, tabs, reorder buttons, ratings, and decorative text.",
-    "Detect completed, cancelled, refunded, or unknown status.",
-    "For cancelled/refunded Thai text, watch for: คำสั่งซื้อถูกยกเลิกแล้ว, คืนเงิน, ยกเลิก.",
-    "Read directly from the image. No OCR text or OCR boxes are provided.",
-    "If a value is unclear, return it blank/0. Never invent.",
-    "List the orders array in the exact same top-to-bottom order the order cards appear on the screen, topmost card first.",
-    "Every order MUST include screenOrder: 1 for the top visible order card, 2 for the next card, 3 for the next, and so on.",
-    "Do not sort by date, time, restaurant name, or amount. Preserve the visual screen order only.",
-    "If two cards look similar, still number them by their vertical position on the screenshot.",
+    "",
+    "Each visible FOOD order card becomes one order. Only read the order-history list.",
+    "Skip cards that belong to a non-history tab: shopeefood \"ดีลล็อกราคา\" (price-lock deals), lineman \"Ongoing\". If the active tab is not the completed/past-orders list, return an empty orders array.",
+    "Ignore navigation, battery banners, tabs, reorder buttons, ratings, GrabCoins, and decorative text.",
+    "restaurantName is the shop name on its own line. On lineman the small line below it (e.g. a saved-address nickname like \"New xs x\" possibly with an emoji) is the USER'S DELIVERY ADDRESS — never put it in restaurantName or branch.",
+    "branch: the branch / outlet text if the shop name includes one (often after \" - \"), else \"\".",
+    "Detect completed, cancelled, refunded, or unknown status. For cancelled/refunded Thai text watch for: คำสั่งซื้อถูกยกเลิกแล้ว, คืนเงิน, ยกเลิก.",
+    "orderedAtText: copy the date/time string EXACTLY as shown, verbatim (Thai or English, with or without a time). Do not reformat, do not convert the year, do not resolve relative words.",
+    `The screenshot was captured around ${referenceDate}; an order date can be this day or earlier, never in the future.`,
+    "totalAmountText: the amount string exactly as shown including the currency mark and decimals (e.g. \"฿216.00\"). totalAmount: the same value as a plain number. If no amount is visible, use \"\" and 0.",
+    "itemCount: the number of items if the card shows one (e.g. shopeefood \"3 รายการ\"), else 0.",
+    "partial: true if the card is clipped by the top or bottom edge of the screen so some of its data is cut off.",
+    "If a value is unclear, return it blank/0/false. Never invent.",
+    "List orders in exact top-to-bottom screen order. Every order MUST include screenOrder: 1 for the topmost card, 2 for the next, and so on — number by vertical position even if two cards look identical. Do not sort by date/amount/name.",
     "",
     "Schema:",
     JSON.stringify({
       sourceApp: "grab|lineman|shopeefood|unknown",
       orders: [{
         screenOrder: 1,
-        orderedAt: "ISO datetime if possible, otherwise visible date text",
+        orderedAtText: "date/time string exactly as shown",
         restaurantName: "string",
+        branch: "string",
+        totalAmountText: "amount string as shown",
         totalAmount: 0,
         status: "completed|cancelled|refunded|unknown",
         refundAmount: 0,
-        itemsText: "short readable item names if visible"
+        itemCount: 0,
+        itemsText: "short readable item names if visible",
+        partial: false
       }]
     }),
     "",
@@ -120,6 +162,12 @@ export async function extractWithOpenRouter(input: {
   const parsed = extractJson(rawText);
   return {
     sourceApp: parseJson<SourceApp>(JSON.stringify(parsed.sourceApp), "unknown"),
-    orders: Array.isArray(parsed.orders) ? parsed.orders : []
+    orders: sanitizeOrders(parsed.orders),
+    usage: {
+      promptTokens: Number(payload?.usage?.prompt_tokens ?? 0) || 0,
+      completionTokens: Number(payload?.usage?.completion_tokens ?? 0) || 0,
+      totalTokens: Number(payload?.usage?.total_tokens ?? 0) || 0,
+      costUsd: Number(payload?.usage?.cost ?? payload?.cost ?? 0) || 0
+    }
   };
 }

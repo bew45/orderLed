@@ -1,294 +1,84 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { fmtMonthLabel, SOURCE_APP_LABEL, type OrderRow, type ScreenshotRow } from "../api";
+import { endpoints, fmtMoney, fmtMonthLabel, type BatchRollup, type OrderRow, type ScreenshotRow } from "../api";
 import { CheckFlow } from "../components/CheckFlow";
 import { ScreenshotList } from "../components/ScreenshotList";
-import { Alert, EmptyState, IconCamera, IconChart, IconInbox, PrimaryButton } from "../components/ui";
+import { Button, Empty, IconCamera, IconChart, IconInbox, Notice, Tag } from "../components/ui";
 import { useAppData } from "../state/AppData";
 
-type StageState = "waiting" | "active" | "done" | "failed";
-
-function orderAmount(order: Pick<OrderRow, "net_amount" | "total_amount">) {
-  return Number(order.net_amount || order.total_amount || 0);
-}
-
-function orderMonth(order: Pick<OrderRow, "ordered_at">) {
-  return /^\d{4}-\d{2}/.test(order.ordered_at || "") ? order.ordered_at.slice(0, 7) : "unknown";
-}
-
-function monthLabel(month: string) {
-  return month === "unknown" ? "Unknown" : fmtMonthLabel(month);
-}
-
-function countBy<T>(items: T[], pick: (item: T) => string) {
-  const map = new Map<string, number>();
-  for (const item of items) {
-    const key = pick(item) || "unknown";
-    map.set(key, (map.get(key) ?? 0) + 1);
-  }
-  return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-}
-
-function screenshotCheckFinished(shot: ScreenshotRow) {
-  return shot.processed_at > 0 && ["done", "failed", "skipped"].includes(shot.ocr_status) && shot.llm_status === "done";
-}
-
-function orderScreenshotIds(order: OrderRow) {
-  try {
-    const ids = JSON.parse(order.source_screenshot_ids_json || "[]");
-    return Array.isArray(ids) ? ids.map(String) : [];
-  } catch {
-    return [];
-  }
-}
+function isFinished(shot: ScreenshotRow) { return shot.processed_at > 0 && ["done", "failed", "skipped"].includes(shot.ocr_status) && shot.llm_status === "done"; }
+function amount(order: OrderRow) { return Number(order.net_amount || order.total_amount || 0); }
+function screenshotIds(order: OrderRow) { try { const ids = JSON.parse(order.source_screenshot_ids_json || "[]"); return Array.isArray(ids) ? ids.map(String) : []; } catch { return []; } }
 
 export function ImportScreen(props: { onUpload: () => void; onCreateBatch: () => void; onOpenDashboard: () => void }) {
   const { activeBatch, summary, screenshots, orders, deleteScreenshot, processActiveBatch, processScreenshot, stopProcessing, refreshOrders } = useAppData();
   const [processing, setProcessing] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const [processError, setProcessError] = useState("");
+  const [message, setMessage] = useState("");
   const [checkTarget, setCheckTarget] = useState<{ screenshotId?: string } | null>(null);
-  const [awaitingFirstPoll, setAwaitingFirstPoll] = useState(false);
+  const [rollup, setRollup] = useState<BatchRollup | null>(null);
 
-  // Fast poll every 1.5s while processing (like Muse manga's useMangaJob refetchInterval)
   useEffect(() => {
     if (!processing) return;
-    const poll = () => { refreshOrders().then(() => setAwaitingFirstPoll(false)); };
-    // First poll after 600ms (give backend time to clear screenshots)
-    const t = window.setTimeout(poll, 600);
-    // Continue every 1.5s
-    const id = window.setInterval(poll, 1500);
-    return () => { window.clearTimeout(t); window.clearInterval(id); };
+    const timer = window.setInterval(() => void refreshOrders(), 1500);
+    return () => window.clearInterval(timer);
   }, [processing, refreshOrders]);
 
-  async function handleProcess(force: boolean) {
-    setProcessing(true);
-    setProcessError("");
-    setAwaitingFirstPoll(true);
-    try {
-      await processActiveBatch(force);
-    } catch (err: any) {
-      setProcessError(err.message || "Failed to read screenshots");
-    } finally {
-      setProcessing(false);
-      setStopping(false);
-      setAwaitingFirstPoll(false);
-    }
-  }
+  useEffect(() => {
+    if (!activeBatch) { setRollup(null); return; }
+    let cancelled = false;
+    endpoints
+      .batchRollup(activeBatch.id)
+      .then((data) => { if (!cancelled) setRollup(data.rollup); })
+      .catch(() => { if (!cancelled) setRollup(null); });
+    return () => { cancelled = true; };
+  }, [activeBatch?.id, summary?.ordersTotal, summary?.ordersBlocked, processing]);
 
-  async function handleStopProcessing() {
-    setStopping(true);
-    setProcessError("");
-    try {
-      const stopped = await stopProcessing();
-      setProcessError(stopped ? "Stopping current read..." : "No active read is running.");
-      await refreshOrders();
-    } catch (err: any) {
-      setProcessError(err.message || "Failed to stop processing");
-    }
-  }
-
-  const finalizedScreenshotIds = useMemo(
-    () => new Set(screenshots.filter(screenshotCheckFinished).map((shot) => shot.id)),
-    [screenshots]
-  );
-  const finalizedOrders = useMemo(
-    () => orders.filter((order) => orderScreenshotIds(order).some((id) => finalizedScreenshotIds.has(id))),
-    [orders, finalizedScreenshotIds]
-  );
-
-  const importStats = useMemo(() => {
-    const months = countBy(finalizedOrders, orderMonth);
-    const appRows = finalizedOrders.length > 0
-      ? countBy(finalizedOrders, (order) => order.source_app)
-      : countBy(screenshots, (shot) => shot.source_app_guess);
-    const ocrLines = screenshots.reduce((sum, shot) => sum + Number(shot.ocr_line_count || 0), 0);
-    const rowsFromShots = screenshots.filter(screenshotCheckFinished).reduce((sum, shot) => sum + Number(shot.extracted_order_count || 0), 0);
-    const netSpend = finalizedOrders.reduce((sum, order) => sum + orderAmount(order), 0);
-
-    return {
-      months,
-      appRows,
-      ocrLines,
-      rowsFromShots,
-      netSpend
-    };
-  }, [finalizedOrders, screenshots]);
-
-  if (!activeBatch) {
-    return (
-      <div className="screen">
-        <EmptyState
-          icon={<IconInbox size={24} />}
-          title="Start an import"
-          body="Create an import session before uploading screenshots."
-        >
-          <PrimaryButton onClick={props.onCreateBatch}>Create import</PrimaryButton>
-        </EmptyState>
-      </div>
-    );
-  }
-
-  const needsCheckOrders = finalizedOrders.filter((order) => order.review_state === "needs_check");
+  const completedShots = screenshots.filter(isFinished);
+  const finalizedOrders = useMemo(() => {
+    const ids = new Set(completedShots.map((shot) => shot.id));
+    return orders.filter((order) => screenshotIds(order).some((id) => ids.has(id)));
+  }, [orders, completedShots]);
+  const unread = screenshots.filter((shot) => !shot.processed_at && !shot.error).length;
+  const needsCheck = finalizedOrders.filter((order) => order.review_tier !== "clean").length;
+  const blocked = finalizedOrders.filter((order) => order.review_tier === "blocked").length;
+  const readCount = completedShots.length;
   const total = summary?.screenshotsTotal ?? screenshots.length;
   const failed = summary?.screenshotsFailed ?? screenshots.filter((shot) => shot.error).length;
-  const processed = screenshots.filter(screenshotCheckFinished).length;
-  const ordersFound = finalizedOrders.length;
-  const unread = screenshots.filter((shot) => !shot.processed_at && !shot.error).length;
-  const canReadNew = total > 0 && !processing && (unread > 0 || failed > 0);
-  const canReread = total > 0 && !processing && (processed > 0 || failed > 0 || ordersFound > 0);
-  // Show 0% until first poll returns fresh data, then show real progress
-  const percent = awaitingFirstPoll ? 0 : total > 0 ? Math.round((processed / total) * 100) : 0;
-  const isStopNotice = /^Stop|^No active/.test(processError);
-  const stages: Array<{ label: string; meta: string; state: StageState }> = [
-    { label: "Upload", meta: `${total} file${total === 1 ? "" : "s"}`, state: total > 0 ? "done" : "active" },
-    {
-      label: "Read OCR",
-      meta: total > 0 ? `${processed}/${total} read` : "waiting for files",
-      state: processing ? "active" : failed > 0 ? "failed" : processed > 0 ? "done" : total > 0 ? "active" : "waiting"
-    },
-    {
-      label: "Extract rows",
-      meta: `${ordersFound} row${ordersFound === 1 ? "" : "s"}`,
-      state: ordersFound > 0 ? "done" : processed > 0 || failed > 0 ? "active" : "waiting"
-    },
-    {
-      label: "Dashboard",
-      meta: ordersFound > 0 ? "ready" : "not ready",
-      state: ordersFound > 0 ? "done" : "waiting"
-    }
-  ];
+  const percent = total ? Math.round((readCount / total) * 100) : 0;
+
+  const run = async (force: boolean) => {
+    setProcessing(true); setMessage("");
+    try { await processActiveBatch(force); } catch (error: any) { setMessage(error.message || "Could not read screenshots"); }
+    finally { setProcessing(false); setStopping(false); }
+  };
+  const stop = async () => { setStopping(true); try { const stopped = await stopProcessing(); setMessage(stopped ? "Stopping the current read…" : "No read is running."); } catch (error: any) { setMessage(error.message || "Could not stop reading"); } finally { setStopping(false); } };
+
+  if (!activeBatch) return <main className="screen"><Empty icon={<IconInbox size={22} />} title="Create your first import" body="An import keeps a group of screenshots together while you read and export them."><Button onClick={props.onCreateBatch}>New import</Button></Empty></main>;
+
+  const totalSpend = finalizedOrders.reduce((sum, order) => sum + amount(order), 0);
+  const periodLabel = (rollup?.periods ?? [])
+    .map((p) => (p === "unknown" ? "ไม่ทราบเดือน" : fmtMonthLabel(p)))
+    .join(" · ");
 
   return (
-    <div className="screen">
-      <div>
-        <p className="eyebrow">Import Workspace</p>
-        <h2 className="screen-title">{activeBatch.title}</h2>
-        <p className="screen-subtitle">Upload screenshots, read them, inspect OCR text, then send the batch to Dashboard.</p>
-      </div>
+    <main className="screen">
+      <div className="imp-batch-row"><span className="imp-batch-pill"><i className="dot ok" /><strong>{activeBatch.title}</strong></span><Button tone="line" slim onClick={props.onCreateBatch}>New</Button></div>
+      <div className="screen-head"><p className="overline">Import workspace</p><h2>Read your screenshots</h2><p>Upload first. Read runs vision extraction and the OCR amount check.</p></div>
 
-      <section className="import-pipeline-card">
-        <div className="import-pipeline-head">
-          <div>
-            <h3>Batch pipeline</h3>
-            <p>{ordersFound > 0 ? "This batch has extracted rows and can be opened in Dashboard." : total > 0 ? "Files are ready. Run Read to extract rows." : "Start by uploading iPhone screenshots."}</p>
-          </div>
-          <PrimaryButton className="btn-sm" onClick={props.onUpload}>
-            <IconCamera size={15} /> Upload
-          </PrimaryButton>
-        </div>
-        <div className="import-stage-list">
-          {stages.map((stage, index) => (
-            <div className={`import-stage is-${stage.state}`} key={stage.label}>
-              <span className="import-stage-index tabular">{index + 1}</span>
-              <span className="import-stage-main">
-                <strong>{stage.label}</strong>
-                <small>{stage.meta}</small>
-              </span>
-            </div>
-          ))}
-        </div>
-        {processing && (
-          <div className="import-progress-row">
-            <span className="import-progress-track">
-              <i style={{ width: `${percent}%` }} />
-            </span>
-            <em>{percent}%</em>
-          </div>
-        )}
-      </section>
+      <button className="imp-drop" onClick={props.onUpload}><span className="imp-drop-orb"><IconCamera size={20} /></span><strong>Upload screenshots</strong><small>{screenshots.length ? `${screenshots.length} images already in this import` : "Choose as many iPhone screenshots as you need"}</small></button>
 
-      <div className="btn-row import-action-row">
-        <PrimaryButton disabled={!canReadNew} onClick={() => handleProcess(false)}>
-          {processing ? "Reading..." : failed > 0 && unread === 0 ? "Retry failed" : unread > 0 ? `Read ${unread} new` : "Read screenshots"}
-        </PrimaryButton>
-        <PrimaryButton variant="ghost" disabled={!canReread} onClick={() => handleProcess(true)}>
-          Re-read all
-        </PrimaryButton>
-        {processing && (
-          <PrimaryButton variant="danger" disabled={stopping} onClick={handleStopProcessing}>
-            {stopping ? "Stopping..." : "Stop all"}
-          </PrimaryButton>
-        )}
-      </div>
+      {screenshots.length > 0 && <section className="card"><div className="card-head"><h3>Read progress</h3><Tag tone={processing ? "inkfill" : failed ? "warn" : readCount ? "ok" : "plain"}>{processing ? "Reading" : failed ? "Attention" : readCount ? "Ready" : "Waiting"}</Tag></div><div className="imp-progress"><span className="imp-progress-track"><i style={{ width: `${percent}%` }} /></span><em>{readCount}/{total}</em></div><p className="imp-read-note">OCR and vision extraction are saved screenshot by screenshot.</p></section>}
 
-      {processError && (
-        <Alert
-          variant={isStopNotice ? "info" : "error"}
-          title={isStopNotice ? "Read control" : "Reading failed"}
-          message={processError}
-          onDismiss={() => setProcessError("")}
-        />
-      )}
+      {screenshots.length > 0 && <div className="btn-row"><Button wide disabled={processing || (!unread && !failed)} onClick={() => run(false)}>{processing ? "Reading…" : unread ? `Read ${unread} new` : "Retry failed"}</Button><Button tone="line" wide disabled={processing || !readCount} onClick={() => run(true)}>Re-read all</Button></div>}
+      {processing && <Button tone="bad" wide disabled={stopping} onClick={stop}>{stopping ? "Stopping…" : "Stop reading"}</Button>}
+      {message && <Notice tone={message.startsWith("Stopping") || message.startsWith("No read") ? "plain" : "bad"} title="Read status" body={message} onDismiss={() => setMessage("")} />}
 
-      {ordersFound > 0 && (
-        <PrimaryButton block onClick={props.onOpenDashboard}>
-          <IconChart size={16} /> Open Dashboard
-        </PrimaryButton>
-      )}
+      {rollup && (rollup.newOrders + rollup.mergedOrders) > 0 && <section className="card"><div className="card-head"><h3>โพสต์เข้าบัญชีแล้ว</h3><span>{periodLabel || "—"}</span></div><div className="imp-summary"><div className="imp-summary-row"><span>รายการใหม่</span><strong>{rollup.newOrders}{rollup.mergedOrders > 0 ? ` · รวมกับของเดิม ${rollup.mergedOrders}` : ""}</strong></div><div className="imp-summary-row"><span>ยอดที่เพิ่ม (ไม่รวม blocked)</span><strong className="tabular">{fmtMoney(rollup.netPosted)} ฿</strong></div>{(rollup.reviewCount > 0 || rollup.blockedCount > 0) && <div className="imp-summary-row"><span>ต้องดู</span><strong>{rollup.reviewCount > 0 ? `${rollup.reviewCount} ควรดู` : ""}{rollup.reviewCount > 0 && rollup.blockedCount > 0 ? " · " : ""}{rollup.blockedCount > 0 ? `${rollup.blockedCount} อ่านไม่ชัด` : ""}</strong></div>}</div></section>}
+      {finalizedOrders.length > 0 && <Button wide onClick={props.onOpenDashboard}><IconChart size={16} /> View summary</Button>}
+      {needsCheck > 0 && <Button tone="line" wide onClick={() => setCheckTarget({})}>ตรวจ {needsCheck} รายการ{blocked > 0 ? ` (${blocked} อ่านไม่ชัด)` : ""}</Button>}
 
-      {needsCheckOrders.length > 0 && (
-        <PrimaryButton block variant="ghost" onClick={() => setCheckTarget({})}>
-          Check {needsCheckOrders.length} order{needsCheckOrders.length === 1 ? "" : "s"}
-        </PrimaryButton>
-      )}
-
-      {ordersFound > 0 && (
-        <section className="dashboard-section">
-          <div className="dashboard-section-head">
-            <h3>Batch summary</h3>
-            <span>{ordersFound} rows</span>
-          </div>
-          <div className="import-summary-lines">
-            <div className="import-summary-line">
-              <span>Detected months</span>
-              <strong>{importStats.months.map(([month]) => monthLabel(month)).join(", ")}</strong>
-            </div>
-            <div className="import-summary-line">
-              <span>Apps</span>
-              <strong>{importStats.appRows.map(([app, count]) => `${SOURCE_APP_LABEL[app] ?? app} ${count}`).join(" / ")}</strong>
-            </div>
-            <div className="import-summary-line">
-              <span>Net amount</span>
-              <strong className="tabular">THB {importStats.netSpend.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {screenshots.length === 0 ? (
-        <EmptyState
-          icon={<IconCamera size={22} />}
-          title="No screenshots in this import"
-          body="Upload screenshots first. They will stay in this workspace after reload."
-        >
-          <PrimaryButton onClick={props.onUpload}>Upload screenshots</PrimaryButton>
-        </EmptyState>
-      ) : (
-        <section className="dashboard-section">
-          <div className="dashboard-section-head">
-            <h3>Uploaded files and OCR</h3>
-            <span>{screenshots.length} image{screenshots.length === 1 ? "" : "s"}</span>
-          </div>
-          <ScreenshotList
-            screenshots={screenshots}
-            orders={finalizedOrders}
-            onDelete={deleteScreenshot}
-            onCheck={(screenshotId) => setCheckTarget({ screenshotId })}
-            onRerun={processScreenshot}
-            showOcr
-          />
-        </section>
-      )}
-
-      {checkTarget && (
-        <CheckFlow
-          orders={orders}
-          screenshots={screenshots}
-          focusScreenshotId={checkTarget.screenshotId}
-          onClose={() => setCheckTarget(null)}
-          processScreenshot={processScreenshot}
-        />
-      )}
-    </div>
+      {screenshots.length === 0 ? <Empty icon={<IconCamera size={22} />} title="No screenshots yet" body="Upload screenshots to this import. You can remove any mistakes before reading." /> : <section><div className="card-head"><h3>Screenshot evidence</h3><span>{screenshots.length} files</span></div><ScreenshotList screenshots={screenshots} orders={finalizedOrders} onDelete={deleteScreenshot} onCheck={(screenshotId) => setCheckTarget({ screenshotId })} onRerun={processScreenshot} showOcr /></section>}
+      {checkTarget && <CheckFlow orders={orders} screenshots={screenshots} focusScreenshotId={checkTarget.screenshotId} onClose={() => setCheckTarget(null)} processScreenshot={processScreenshot} />}
+    </main>
   );
 }

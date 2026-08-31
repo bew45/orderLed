@@ -1,6 +1,7 @@
-import { compareAmounts, scanAmountCandidates } from "./amount-check";
+import { compareAmounts, scanAmountCandidates, verifyOrderAmount } from "./amount-check";
+import { assessOrder } from "./confidence";
 import { extractWithOpenRouter } from "./openrouter";
-import { guessSourceAppFromText, normalizeExtractedOrder } from "../normalize";
+import { duplicateKey as makeDuplicateKey, guessSourceAppFromText, normalizeExtractedOrder } from "../normalize";
 import { runOcrQueued } from "../ocr/ocr-runner";
 import {
   clearScreenshotExtraction,
@@ -12,9 +13,13 @@ import {
   markScreenshotLlm,
   markScreenshotOcr,
   markScreenshotProcessed,
+  recordFieldEvidence,
+  recordOrderObservation,
+  finishExtractionRun,
+  startExtractionRun,
   upsertOrder
 } from "../store";
-import type { AmountCandidate, AmountCheck, AmountCheckState, Batch, ExtractedOrder, OcrRow, ReviewState, Screenshot, SourceApp } from "../types";
+import type { AmountCandidate, AmountCheck, ExtractedOrder, OcrRow, Screenshot, SourceApp } from "../types";
 
 type OcrResult = {
   rows: OcrRow[];
@@ -27,12 +32,12 @@ type LlmResult = {
   result: Awaited<ReturnType<typeof extractWithOpenRouter>>;
   error: string;
   extractionEngine: string;
-  normalizedOrders: NormalizedOrder[];
+  normalizedOrders: NormalizedCard[];
   aiCandidates: AmountCandidate[];
   attentionReasons: string[];
 };
 
-type NormalizedOrder = {
+type NormalizedCard = {
   raw: ExtractedOrder & { screenOrder: number };
   normalized: ReturnType<typeof normalizeExtractedOrder>;
 };
@@ -48,10 +53,6 @@ export function stopAllProcessing() {
 function stoppedError(error: any) {
   if (error?.name === "AbortError") return "Processing stopped";
   return error?.message || "Processing failed";
-}
-
-function reviewStateFromAmountCheck(state: AmountCheckState, attentionReasons: string[] = []): ReviewState {
-  return state === "matched" && attentionReasons.length === 0 ? "ok" : "needs_check";
 }
 
 function containsRefundSignal(text: string) {
@@ -132,25 +133,82 @@ function unavailableAmountCheck(aiCandidates: AmountCandidate[], reasons: string
   return amountCheck;
 }
 
-function normalizeLlmOrders(batch: Batch, result: NonNullable<LlmResult["result"]>, sourceAppGuess: SourceApp): NormalizedOrder[] {
-  return result.orders
-    .map((order, index) => ({
-      raw: {
-        ...order,
-        screenOrder: Number.isFinite(Number(order.screenOrder)) && Number(order.screenOrder) > 0
-          ? Number(order.screenOrder)
-          : index + 1
-      },
-      normalized: normalizeExtractedOrder(order, {
-        month: batch.month,
-        sourceApp: order.sourceApp ?? result.sourceApp ?? sourceAppGuess
+function normalizeLlmOrders(result: NonNullable<LlmResult["result"]>, sourceAppGuess: SourceApp, screenshotId: string): NormalizedCard[] {
+  const now = Date.now();
+  const rawOrders = result.orders.map((order, index) => ({
+    ...order,
+    screenOrder: Number.isFinite(Number(order.screenOrder)) && Number(order.screenOrder) > 0
+      ? Number(order.screenOrder)
+      : index + 1
+  }));
+
+  // Bug B21: models sometimes repeat "1" for every card. If screenOrder collides,
+  // fall back to strict array position so downstream ordering + the B11 same-card
+  // check stay reliable.
+  const seen = new Set<number>();
+  const hasCollision = rawOrders.some((order) => {
+    if (seen.has(order.screenOrder)) return true;
+    seen.add(order.screenOrder);
+    return false;
+  });
+  if (hasCollision) rawOrders.forEach((order, index) => { order.screenOrder = index + 1; });
+
+  const cards = rawOrders
+    .map((raw) => ({
+      raw,
+      // Keep orders whose amount could not be read (bug B4): they land in the
+      // ledger as "blocked" instead of vanishing.
+      normalized: normalizeExtractedOrder(raw, {
+        sourceApp: raw.sourceApp ?? result.sourceApp ?? sourceAppGuess,
+        uniqueSeed: `${screenshotId}|${raw.screenOrder}`,
+        now
       })
     }))
-    .filter(({ normalized }) => normalized.totalAmount > 0)
     .sort((a, b) => Number(a.raw.screenOrder) - Number(b.raw.screenOrder));
+
+  return fillMonthsFromSiblings(cards);
 }
 
-function aiCandidatesFromOrders(normalizedOrders: NormalizedOrder[]) {
+/**
+ * Step 2d (docs/REDESIGN_PLAN.md §5, decision D2): a card whose date could not be
+ * read inherits its MONTH — never a fabricated day — from the nearest sibling on
+ * the same screenshot that does have a full date. History lists are date-sorted,
+ * so the closest card by screen position is the best guess.
+ */
+function fillMonthsFromSiblings(cards: NormalizedCard[]): NormalizedCard[] {
+  const anchors = cards
+    .filter((c) => c.normalized.datePrecision === "full" && /^\d{4}-\d{2}/.test(c.normalized.orderedAt))
+    .map((c) => ({ screenOrder: c.raw.screenOrder, month: c.normalized.orderedAt.slice(0, 7) }));
+  if (anchors.length === 0) return cards;
+
+  return cards.map((card) => {
+    const n = card.normalized;
+    if (n.datePrecision !== "none" || n.attentionReasons.includes("date_relative")) return card;
+
+    let best = anchors[0];
+    for (const anchor of anchors) {
+      if (Math.abs(anchor.screenOrder - card.raw.screenOrder) < Math.abs(best.screenOrder - card.raw.screenOrder)) {
+        best = anchor;
+      }
+    }
+    const orderedAt = best.month; // "YYYY-MM" only
+    const strong = n.sourceApp !== "unknown" && Boolean(n.restaurantName);
+    return {
+      ...card,
+      normalized: {
+        ...n,
+        orderedAt,
+        datePrecision: "month" as const,
+        attentionReasons: [...n.attentionReasons.filter((r) => r !== "date_missing"), "month_from_siblings"],
+        duplicateKey: strong
+          ? makeDuplicateKey({ sourceApp: n.sourceApp, orderedAt, restaurantName: n.restaurantName, totalAmount: n.totalAmount })
+          : n.duplicateKey
+      }
+    };
+  });
+}
+
+function aiCandidatesFromOrders(normalizedOrders: NormalizedCard[]) {
   return normalizedOrders
     .filter(({ normalized }) => normalized.totalAmount > 0)
     .map(({ normalized }) => ({ amount: normalized.totalAmount, text: normalized.restaurantName || "AI amount" }));
@@ -160,10 +218,12 @@ function persistScreenshotOrders(input: {
   batchId: string;
   screenshot: Screenshot;
   sourceAppGuess: SourceApp;
-  normalizedOrders: NormalizedOrder[];
+  normalizedOrders: NormalizedCard[];
   amountCheck: AmountCheck;
+  ocrAvailable: boolean;
   attentionReasons?: string[];
   extractionEngine: string;
+  extractionRunId: string;
   ocrRows?: OcrRow[];
   error?: string;
 }) {
@@ -179,32 +239,78 @@ function persistScreenshotOrders(input: {
 
   const attentionReasons = input.attentionReasons ?? [];
   const amountCheck = addReasonsToAmountCheck(input.amountCheck, attentionReasons);
-  const reviewState = reviewStateFromAmountCheck(amountCheck.state, attentionReasons);
+  const ocrRows = input.ocrRows ?? [];
   let extractedOrderCount = 0;
 
   for (const { raw, normalized } of input.normalizedOrders) {
-    upsertOrder({
+    const orderAttentionReasons = mergeReasons(attentionReasons, normalized.attentionReasons);
+
+    // Per-order amount trust + confidence/tier (bugs B1, B4, B15).
+    const amountSignal = verifyOrderAmount({
+      totalAmount: normalized.totalAmount,
+      ocrRows,
+      ocrAvailable: input.ocrAvailable
+    });
+    const assessment = assessOrder(normalized, { amount: amountSignal });
+
+    const order = upsertOrder({
       batchId: input.batchId,
+      sourceApp: normalized.sourceApp,
+      orderedAt: normalized.orderedAt,
+      datePrecision: normalized.datePrecision,
+      restaurantName: normalized.restaurantName,
+      branch: normalized.branch,
+      totalAmount: normalized.totalAmount,
+      status: normalized.status,
+      refundAmount: normalized.refundAmount,
+      netAmount: normalized.netAmount,
+      itemCount: normalized.itemCount,
+      itemsText: normalized.itemsText,
+      confidence: assessment.confidence,
+      reviewTier: assessment.reviewTier,
+      flags: assessment.flags,
+      duplicateKey: normalized.duplicateKey,
+      sourceScreenshotId: input.screenshot.id,
+      screenOrder: raw.screenOrder,
+      evidence: {
+        screenOrder: raw.screenOrder,
+        amountSignal,
+        amountCheck: {
+          state: amountCheck.state,
+          reasons: mergeReasons(amountCheck.reasons, orderAttentionReasons),
+          aiAmounts: amountCheck.aiAmounts,
+          scannerAmounts: amountCheck.scannerAmounts
+        },
+        attentionReasons: orderAttentionReasons,
+        flags: assessment.flags
+      }
+    });
+    const observation = recordOrderObservation({
+      extractionRunId: input.extractionRunId,
+      batchId: input.batchId,
+      screenshotId: input.screenshot.id,
+      orderId: order.id,
+      screenOrder: raw.screenOrder,
+      raw,
+      normalized,
+      attentionReasons: orderAttentionReasons
+    });
+    for (const [fieldName, value] of Object.entries({
       sourceApp: normalized.sourceApp,
       orderedAt: normalized.orderedAt,
       restaurantName: normalized.restaurantName,
       totalAmount: normalized.totalAmount,
       status: normalized.status,
       refundAmount: normalized.refundAmount,
-      netAmount: normalized.netAmount,
-      itemsText: normalized.itemsText,
-      reviewState,
-      duplicateKey: normalized.duplicateKey,
-      sourceScreenshotId: input.screenshot.id,
-      evidence: {
-        screenOrder: raw.screenOrder,
-        amountCheck: {
-          state: amountCheck.state,
-          reasons: amountCheck.reasons,
-          aiAmounts: amountCheck.aiAmounts,
-          scannerAmounts: amountCheck.scannerAmounts
-        }
-      }
+      itemsText: normalized.itemsText
+    })) {
+      recordFieldEvidence({ observationId: observation.id, fieldName, source: "vision", value });
+    }
+    recordFieldEvidence({
+      observationId: observation.id,
+      fieldName: "amountCheck",
+      source: "rule",
+      value: amountCheck
     });
     extractedOrderCount += 1;
   }
@@ -242,8 +348,14 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
     }
 
     const llmTaskById = new Map<string, Promise<LlmResult>>();
+    const extractionRunByScreenshotId = new Map<string, ReturnType<typeof startExtractionRun>>();
     const llmTasks = screenshots.map((screenshot, index): Promise<[string, LlmResult]> => {
       const extractionEngine = `openrouter:${settings.openrouter_model}|run:${llmRunIso}|shot:${index + 1}/${totalShots}`;
+      extractionRunByScreenshotId.set(screenshot.id, startExtractionRun({
+        batchId,
+        screenshotId: screenshot.id,
+        extractionEngine
+      }));
       const task = (async (): Promise<[string, LlmResult]> => {
         markScreenshotLlm(screenshot.id, { status: "running", extractionEngine });
         try {
@@ -256,10 +368,15 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
             throw new Error("OpenRouter API key is required to extract orders.");
           }
           const sourceAppGuess = sourceGuessFromLlm(result, screenshot.source_app_guess);
-          const normalizedOrders = normalizeLlmOrders(batch, result, sourceAppGuess);
+          const normalizedOrders = normalizeLlmOrders(result, sourceAppGuess, screenshot.id);
           const aiCandidates = aiCandidatesFromOrders(normalizedOrders);
           const attentionReasons = attentionReasonsFromLlm(result);
-          markScreenshotLlm(screenshot.id, { status: "done", extractionEngine });
+          markScreenshotLlm(screenshot.id, {
+            status: "done",
+            extractionEngine,
+            usage: result.usage,
+            costUsd: result.usage.costUsd
+          });
           return [screenshot.id, { result, error: "", extractionEngine, normalizedOrders, aiCandidates, attentionReasons }];
         } catch (error: any) {
           const message = stoppedError(error);
@@ -279,8 +396,10 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
     const finalizationTasks: Promise<void>[] = [];
     const finalizeScreenshot = async (screenshot: Screenshot, ocr: OcrResult) => {
       const llm = await llmTaskById.get(screenshot.id);
+      const extractionRun = extractionRunByScreenshotId.get(screenshot.id);
       if (signal.aborted) {
         markScreenshotProcessed(screenshot.id, { error: "Processing stopped" });
+        if (extractionRun) finishExtractionRun({ id: extractionRun.id, status: "stopped", error: "Processing stopped", ocrRows: ocr.rows });
         return;
       }
       try {
@@ -302,19 +421,30 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
           batchId,
           screenshot,
           ocrRows: ocr.rows,
+          ocrAvailable: ocrAmountCheckerEnabled && !ocr.error && ocr.rows.length > 0,
           sourceAppGuess: ocr.sourceAppGuess,
           normalizedOrders: llm.normalizedOrders,
           extractionEngine: llm.extractionEngine,
+          extractionRunId: extractionRun?.id ?? "",
           amountCheck,
           attentionReasons
         });
+        if (extractionRun) finishExtractionRun({
+          id: extractionRun.id,
+          status: "done",
+          llmResult: llm.result,
+          ocrRows: ocr.rows,
+          amountCheck
+        });
       } catch (error: any) {
+        const message = error?.message || "Processing failed";
         markScreenshotProcessed(screenshot.id, {
-          error: error?.message || "Processing failed",
+          error: message,
           ocrRows: ocr.rows,
           sourceAppGuess: ocr.sourceAppGuess,
           extractionEngine: llm?.extractionEngine
         });
+        if (extractionRun) finishExtractionRun({ id: extractionRun.id, status: "failed", error: message, ocrRows: ocr.rows });
       }
     };
     const queueFinalize = (screenshot: Screenshot, ocr: OcrResult) => {
@@ -356,6 +486,8 @@ export async function processBatch(batchId: string, opts: { force?: boolean } = 
     if (signal.aborted) {
       for (const screenshot of screenshots) {
         markScreenshotProcessed(screenshot.id, { error: "Processing stopped" });
+        const extractionRun = extractionRunByScreenshotId.get(screenshot.id);
+        if (extractionRun) finishExtractionRun({ id: extractionRun.id, status: "stopped", error: "Processing stopped" });
       }
       return getBatchSummary(batchId);
     }
@@ -388,6 +520,11 @@ export async function processSingleScreenshot(screenshotId: string) {
 
   // 1. Run LLM
   const extractionEngine = `openrouter:${settings.openrouter_model}|run:${llmRunIso}|single:true`;
+  const extractionRun = startExtractionRun({
+    batchId: screenshot.batch_id,
+    screenshotId,
+    extractionEngine
+  });
   markScreenshotLlm(screenshotId, { status: "running", extractionEngine });
 
   try {
@@ -401,10 +538,15 @@ export async function processSingleScreenshot(screenshotId: string) {
         if (!result) throw new Error("OpenRouter API key is required to extract orders.");
 
         const sourceAppGuess = sourceGuessFromLlm(result, screenshot.source_app_guess);
-        const normalizedOrders = normalizeLlmOrders(batch, result, sourceAppGuess);
+        const normalizedOrders = normalizeLlmOrders(result, sourceAppGuess, screenshotId);
         const aiCandidates = aiCandidatesFromOrders(normalizedOrders);
         const attentionReasons = attentionReasonsFromLlm(result);
-        markScreenshotLlm(screenshotId, { status: "done", extractionEngine });
+        markScreenshotLlm(screenshotId, {
+          status: "done",
+          extractionEngine,
+          usage: result.usage,
+          costUsd: result.usage.costUsd
+        });
         return { result, error: "", extractionEngine, normalizedOrders, aiCandidates, attentionReasons };
       } catch (error: any) {
         const message = stoppedError(error);
@@ -439,6 +581,7 @@ export async function processSingleScreenshot(screenshotId: string) {
 
     if (signal.aborted) {
       markScreenshotProcessed(screenshotId, { error: "Processing stopped" });
+      finishExtractionRun({ id: extractionRun.id, status: "stopped", error: "Processing stopped", ocrRows: ocr.rows });
       return getBatchSummary(screenshot.batch_id);
     }
 
@@ -449,6 +592,7 @@ export async function processSingleScreenshot(screenshotId: string) {
         sourceAppGuess: ocr.sourceAppGuess,
         extractionEngine: llm.extractionEngine
       });
+      finishExtractionRun({ id: extractionRun.id, status: "failed", error: llm.error || "LLM extraction failed", ocrRows: ocr.rows });
       return getBatchSummary(screenshot.batch_id);
     }
 
@@ -466,11 +610,20 @@ export async function processSingleScreenshot(screenshotId: string) {
       batchId: screenshot.batch_id,
       screenshot,
       ocrRows: ocr.rows,
+      ocrAvailable: ocrAmountCheckerEnabled && !ocr.error && ocr.rows.length > 0,
       sourceAppGuess: ocr.sourceAppGuess,
       normalizedOrders: llm.normalizedOrders,
       extractionEngine,
+      extractionRunId: extractionRun.id,
       amountCheck,
       attentionReasons
+    });
+    finishExtractionRun({
+      id: extractionRun.id,
+      status: "done",
+      llmResult: llm.result,
+      ocrRows: ocr.rows,
+      amountCheck
     });
   } catch (error: any) {
     const message = error?.message || "Processing failed";
@@ -480,6 +633,7 @@ export async function processSingleScreenshot(screenshotId: string) {
       sourceAppGuess: screenshot.source_app_guess,
       extractionEngine
     });
+    finishExtractionRun({ id: extractionRun.id, status: "failed", error: message });
   } finally {
     if (activeController === controller) activeController = null;
   }

@@ -1,9 +1,9 @@
 import puppeteer, { type Browser } from "puppeteer";
 import generatePayload from "promptpay-qr";
 import QRCode from "qrcode";
-import { getBatch, getBatchSummary, listOrders, getAppSettings } from "./store";
+import { getBatch, getBatchSummary, getLedgerDashboard, getLedgerOrders, listOrders, getAppSettings } from "./store";
 import { renderBatchInvoiceHtml } from "./pdf-template";
-import type { OrderRow } from "./types";
+import type { Batch, MonthBucket, OrderRow, PdfStyle, ReviewTier } from "./types";
 
 function batchOrThrow(batchId: string) {
   const batch = getBatch(batchId);
@@ -21,31 +21,72 @@ function filterOrders(orders: OrderRow[], month?: string) {
   return orders.filter((order) => order.ordered_at.slice(0, 7) === month);
 }
 
+function monthOf(order: OrderRow) {
+  return /^\d{4}-\d{2}/.test(order.ordered_at || "") ? order.ordered_at.slice(0, 7) : "unknown";
+}
+
+/** Confirmed = clean + review. Blocked rows never enter a baht total (D4). */
+function isConfirmed(order: OrderRow) {
+  return (order.review_tier as ReviewTier) !== "blocked";
+}
+
 function summarizeOrders(orders: OrderRow[]) {
-  const completedSpend = orders.filter((o) => o.status === "completed").reduce((sum, o) => sum + o.total_amount, 0);
-  const netSpend = orders.reduce((sum, o) => sum + o.net_amount, 0);
+  const confirmed = orders.filter(isConfirmed);
+  const completedSpend = confirmed.filter((o) => o.status === "completed").reduce((sum, o) => sum + o.total_amount, 0);
+  const grossSpend = confirmed.reduce((sum, o) => sum + o.total_amount, 0);
+  const netSpend = confirmed.reduce((sum, o) => sum + o.net_amount, 0);
   return {
     netSpend: Math.round(netSpend * 100) / 100,
     completedSpend: Math.round(completedSpend * 100) / 100,
-    refundedOrCancelled: Math.round((completedSpend - netSpend) * 100) / 100,
+    grossSpend: Math.round(grossSpend * 100) / 100,
+    refundedOrCancelled: Math.round((grossSpend - netSpend) * 100) / 100,
     ordersTotal: orders.length,
-    ordersNeedingReview: orders.filter((o) => o.review_state === "needs_check").length
+    ordersNeedingReview: orders.filter((o) => (o.review_tier as ReviewTier) !== "clean").length,
+    ordersBlocked: orders.filter((o) => (o.review_tier as ReviewTier) === "blocked").length
   };
 }
 
 function orderRows(orders: OrderRow[]) {
   return orders.map((order) => ({
+    Month: monthOf(order),
     Date: order.ordered_at.slice(0, 10),
-    Time: order.ordered_at.slice(11, 16),
+    Time: /T\d{2}:\d{2}/.test(order.ordered_at) && !/T00:00(:00)?$/.test(order.ordered_at) ? order.ordered_at.slice(11, 16) : "",
     App: order.source_app,
     Restaurant: order.restaurant_name,
+    Branch: order.branch,
     Status: order.status,
     "Total Amount": order.total_amount,
     "Refund Amount": order.refund_amount,
     "Net Amount": order.net_amount,
     Items: order.items_text,
-    "Check State": order.review_state
+    Tier: order.review_tier,
+    Confidence: order.confidence
   }));
+}
+
+function monthlyRows(buckets: MonthBucket[]) {
+  return buckets.map((bucket) => ({
+    Month: bucket.month,
+    Orders: bucket.orderCount,
+    "Net Spend": bucket.netSpend,
+    "Completed Spend": bucket.completedSpend,
+    "Refunded / Cancelled": bucket.refundedOrCancelled,
+    Grab: bucket.byAppSpend.grab,
+    "LINE MAN": bucket.byAppSpend.lineman,
+    ShopeeFood: bucket.byAppSpend.shopeefood,
+    "Needs review": bucket.reviewCount
+  }));
+}
+
+function ledgerBatchStub(period?: string): Batch {
+  const now = Date.now();
+  return {
+    id: "ledger",
+    title: period ? `OrderLedger ${period}` : "OrderLedger — all periods",
+    month: period ?? new Date().toISOString().slice(0, 7),
+    created_at: now,
+    updated_at: now
+  };
 }
 
 function escapeHtml(value: unknown) {
@@ -72,11 +113,12 @@ export function buildExcelExport(batchId: string, opts: { month?: string } = {})
   const orders = filterOrders(listOrders(batchId), opts.month);
   const summary = opts.month ? summarizeOrders(orders) : getBatchSummary(batchId);
   const summaryRows = [
-    { Metric: "Net spend", Value: summary.netSpend },
+    { Metric: "Net spend (confirmed)", Value: summary.netSpend },
     { Metric: "Completed spend", Value: summary.completedSpend },
     { Metric: "Refunded or cancelled", Value: summary.refundedOrCancelled },
     { Metric: "Order count", Value: summary.ordersTotal },
-    { Metric: "Needs check", Value: summary.ordersNeedingReview }
+    { Metric: "Needs review", Value: summary.ordersNeedingReview },
+    { Metric: "Blocked (excluded from totals)", Value: (summary as { ordersBlocked?: number }).ordersBlocked ?? 0 }
   ];
 
   const byApp = new Map<string, { App: string; Count: number; Net: number; Completed: number }>();
@@ -144,6 +186,67 @@ export function buildCsvExport(batchId: string, opts: { month?: string } = {}) {
   };
 }
 
+// ---- Ledger-scope exports (whole ledger, or one accounting period) ----
+
+function rowsToCsv(rows: Record<string, unknown>[]) {
+  const columns = rows.length ? Object.keys(rows[0]) : [];
+  const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  return [
+    columns.map(escape).join(","),
+    ...rows.map((row) => columns.map((column) => escape(row[column])).join(","))
+  ].join("\n");
+}
+
+export function buildLedgerCsvExport(opts: { period?: string } = {}) {
+  const rows = orderRows(getLedgerOrders(opts.period));
+  return {
+    buffer: Buffer.from(rowsToCsv(rows), "utf8"),
+    contentType: "text/csv; charset=utf-8",
+    filename: `${baseName("orderledger", opts.period ?? "all")}.csv`
+  };
+}
+
+export function buildLedgerExcelExport(opts: { period?: string } = {}) {
+  const orders = getLedgerOrders(opts.period);
+  const summary = summarizeOrders(orders);
+  const dashboard = getLedgerDashboard();
+  const months = opts.period ? dashboard.months.filter((m) => m.month === opts.period) : dashboard.months;
+
+  const summaryRows = [
+    { Metric: "Net spend (confirmed)", Value: summary.netSpend },
+    { Metric: "Gross spend", Value: summary.grossSpend },
+    { Metric: "Refunded or cancelled", Value: summary.refundedOrCancelled },
+    { Metric: "Order count", Value: summary.ordersTotal },
+    { Metric: "Needs review", Value: summary.ordersNeedingReview },
+    { Metric: "Blocked (excluded from totals)", Value: summary.ordersBlocked }
+  ];
+
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Tahoma, Arial, sans-serif; }
+    table { border-collapse: collapse; margin-bottom: 28px; }
+    th, td { border: 1px solid #c9b98f; padding: 6px 8px; }
+    th { background: #f3ead7; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>OrderLedger${opts.period ? ` (${escapeHtml(opts.period)})` : " — all periods"}</h1>
+  ${htmlTable("Monthly", monthlyRows(months))}
+  ${htmlTable("Summary", summaryRows)}
+  ${htmlTable("Orders", orderRows(orders))}
+</body>
+</html>`;
+
+  return {
+    buffer: Buffer.from(html, "utf8"),
+    contentType: "application/vnd.ms-excel; charset=utf-8",
+    filename: `${baseName("orderledger", opts.period ?? "all")}.xls`
+  };
+}
+
 let browserPromise: Promise<Browser> | null = null;
 
 function getBrowser() {
@@ -156,13 +259,14 @@ function getBrowser() {
   return browserPromise;
 }
 
-export async function buildPdfExport(batchId: string, opts: { month?: string } = {}) {
+export async function buildPdfExport(batchId: string, opts: { month?: string; style?: PdfStyle } = {}) {
   const batch = batchOrThrow(batchId);
   const orders = filterOrders(listOrders(batchId), opts.month);
   const summary = opts.month ? summarizeOrders(orders) : getBatchSummary(batchId);
 
   let qrDataUrl: string | null = null;
   const settings = getAppSettings();
+  const style = opts.style ?? settings.pdf_style;
   if (settings.promptpay_qr_enabled && settings.promptpay_id) {
     try {
       const amount = settings.promptpay_amount_locked ? summary.netSpend : undefined;
@@ -182,6 +286,7 @@ export async function buildPdfExport(batchId: string, opts: { month?: string } =
     orders,
     summary,
     month: opts.month,
+    style,
     promptPayQr: qrDataUrl ? {
       qrDataUrl,
       id: settings.promptpay_id,
@@ -189,6 +294,10 @@ export async function buildPdfExport(batchId: string, opts: { month?: string } =
     } : undefined
   });
 
+  return renderPdf(html, `${baseName(batch.title, opts.month ?? batch.month)}.pdf`);
+}
+
+async function renderPdf(html: string, filename: string) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
@@ -198,12 +307,39 @@ export async function buildPdfExport(batchId: string, opts: { month?: string } =
       printBackground: true,
       margin: { top: "0px", bottom: "0px", left: "0px", right: "0px" }
     });
-    return {
-      buffer: Buffer.from(buffer),
-      contentType: "application/pdf",
-      filename: `${baseName(batch.title, opts.month ?? batch.month)}.pdf`
-    };
+    return { buffer: Buffer.from(buffer), contentType: "application/pdf", filename };
   } finally {
     await page.close();
   }
+}
+
+export async function buildLedgerPdfExport(opts: { period?: string; style?: PdfStyle } = {}) {
+  const orders = getLedgerOrders(opts.period);
+  const summary = summarizeOrders(orders);
+  const settings = getAppSettings();
+  const style = opts.style ?? settings.pdf_style;
+
+  let qrDataUrl: string | null = null;
+  if (settings.promptpay_qr_enabled && settings.promptpay_id) {
+    try {
+      const amount = settings.promptpay_amount_locked ? summary.netSpend : undefined;
+      const payload = generatePayload(settings.promptpay_id, amount !== undefined ? { amount } : {});
+      qrDataUrl = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 180 });
+    } catch (err) {
+      console.error("Failed to generate PromptPay QR:", err);
+    }
+  }
+
+  const html = renderBatchInvoiceHtml({
+    batch: ledgerBatchStub(opts.period),
+    orders,
+    summary,
+    month: opts.period,
+    style,
+    promptPayQr: qrDataUrl
+      ? { qrDataUrl, id: settings.promptpay_id, recipientName: settings.promptpay_recipient_name }
+      : undefined
+  });
+
+  return renderPdf(html, `${baseName("orderledger", opts.period ?? "all")}.pdf`);
 }

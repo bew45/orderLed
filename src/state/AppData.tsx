@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { endpoints, monthNow, type AppSettings, type BatchListItem, type BatchSummary, type OrderRow, type ScreenshotRow, type UploadResult } from "../api";
+import { endpoints, monthNow, type AppSettings, type BatchListItem, type BatchSummary, type LedgerDashboard, type OrderRow, type ScreenshotRow, type UploadResult } from "../api";
 
 const AUTO_SYNC_INTERVAL_MS = 5000;
 const ACTIVE_BATCH_STORAGE_KEY = "orderledger.activeBatchId";
@@ -10,6 +10,7 @@ type AppDataValue = {
   activeBatch: BatchListItem | undefined;
   orders: OrderRow[];
   allOrders: OrderRow[];
+  ledgerDashboard: LedgerDashboard | null;
   screenshots: ScreenshotRow[];
   summary: BatchSummary | null;
   settings: AppSettings | null;
@@ -54,6 +55,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [activeBatchId, setActiveBatchId] = useState(readStoredActiveBatchId);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [allOrders, setAllOrders] = useState<OrderRow[]>([]);
+  const [ledgerDashboard, setLedgerDashboard] = useState<LedgerDashboard | null>(null);
   const [screenshots, setScreenshots] = useState<ScreenshotRow[]>([]);
   const [summary, setSummary] = useState<BatchSummary | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -101,9 +103,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     syncInFlightRef.current = true;
     try {
-      const [data, allOrdersData] = await Promise.all([endpoints.listBatches(), endpoints.listAllOrders()]);
+      const [data, allOrdersData, dashboardData] = await Promise.all([
+        endpoints.listBatches(),
+        endpoints.listAllOrders(),
+        endpoints.ledgerDashboard().catch(() => null)
+      ]);
       setBatches(data.batches);
       setAllOrders(allOrdersData.orders);
+      if (dashboardData) setLedgerDashboard(dashboardData.dashboard);
 
       const currentActiveId = activeBatchIdRef.current;
       const nextActiveId = currentActiveId && data.batches.some((batch) => batch.id === currentActiveId)
@@ -196,6 +203,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     activeBatch: batches.find((batch) => batch.id === activeBatchId),
     orders,
     allOrders,
+    ledgerDashboard,
     screenshots,
     summary,
     settings,

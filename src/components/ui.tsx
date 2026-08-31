@@ -1,4 +1,4 @@
-import React from "react";
+import React, { createContext, useCallback, useContext, useRef, useState } from "react";
 
 type IconProps = { size?: number; className?: string };
 
@@ -15,7 +15,6 @@ function svg(path: React.ReactNode) {
 export const IconHome = svg(
   <path d="M4 11.5 12 4l8 7.5M6 9.5V19a1 1 0 0 0 1 1h3v-5a2 2 0 1 1 4 0v5h3a1 1 0 0 0 1-1V9.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
 );
-
 
 export const IconHistory = svg(
   <>
@@ -50,6 +49,10 @@ export const IconCheck = svg(
 
 export const IconChevronRight = svg(
   <path d="m9 5.5 7 6.5-7 6.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+);
+
+export const IconChevronLeft = svg(
+  <path d="m15 5.5-7 6.5 7 6.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
 );
 
 export const IconClose = svg(
@@ -124,67 +127,110 @@ export const IconAlertTriangle = svg(
   </>
 );
 
-/* ---------- Primitives ---------- */
+export const IconImage = svg(
+  <>
+    <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
+    <circle cx="9" cy="10" r="1.6" stroke="currentColor" strokeWidth="1.4" />
+    <path d="m5 17 4.5-4 3.5 3 2.5-2 3.5 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </>
+);
 
-export function PrimaryButton(
-  props: React.ButtonHTMLAttributes<HTMLButtonElement> & { block?: boolean; variant?: "primary" | "ghost" | "danger" }
+export const IconSparkle = svg(
+  <path d="M12 4c.6 3.6 2.4 5.4 6 6-3.6.6-5.4 2.4-6 6-.6-3.6-2.4-5.4-6-6 3.6-.6 5.4-2.4 6-6ZM18.5 15.5c.3 1.6 1 2.4 2.5 2.7-1.5.3-2.2 1.1-2.5 2.7-.3-1.6-1-2.4-2.5-2.7 1.5-.3 2.2-1.1 2.5-2.7Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+);
+
+export const IconArrowUpRight = svg(
+  <path d="M7 17 17 7M9 7h8v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+);
+
+export const IconInfo = svg(
+  <>
+    <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M12 11v5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    <circle cx="12" cy="8" r="0.9" fill="currentColor" />
+  </>
+);
+
+/* ============ Primitives ============ */
+
+export function Button(
+  props: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    tone?: "ink" | "line" | "bad";
+    wide?: boolean;
+    slim?: boolean;
+  }
 ) {
-  const { block, variant = "primary", className, ...rest } = props;
-  const cls = ["btn", `btn-${variant}`, block ? "btn-block" : "", className].filter(Boolean).join(" ");
+  const { tone = "ink", wide, slim, className, ...rest } = props;
+  const cls = ["btn", `btn-${tone}`, wide ? "btn-wide" : "", slim ? "btn-slim" : "", className]
+    .filter(Boolean)
+    .join(" ");
   return <button className={cls} {...rest} />;
 }
 
-export function StatCard(props: { label: string; value: string; tone?: "warn" }) {
-  return (
-    <div className={["stat-card", props.tone === "warn" ? "warn" : ""].filter(Boolean).join(" ")}>
-      <span className="stat-label">{props.label}</span>
-      <strong className="stat-value tabular">{props.value}</strong>
-    </div>
-  );
+/** Small round status tag: dot + label, tinted by tone. */
+export function Tag(props: { tone?: "ok" | "warn" | "bad" | "inkfill" | "plain"; children: React.ReactNode }) {
+  const tone = props.tone && props.tone !== "plain" ? ` ${props.tone}` : "";
+  return <span className={`tag${tone}`}>{props.children}</span>;
 }
 
-export function Badge(props: { status: string; label?: string }) {
-  const labels: Record<string, string> = {
-    completed: "Completed",
-    cancelled: "Cancelled",
-    refunded: "Refunded",
-    unknown: "Unknown",
-    needs_check: "Needs check",
-    corrected: "Corrected",
-    ok: "OK",
-    matched: "Numbers matched",
-    mismatch: "Needs check",
-    unavailable: "Not verified",
-    not_checked: "Not checked"
-  };
-  return (
-    <span className={`badge badge--${props.status}`}>
-      <span className="badge-dot" />
-      {props.label ?? labels[props.status] ?? props.status}
-    </span>
-  );
-}
-
-export type AlertVariant = "success" | "warning" | "error" | "info";
-
-const ALERT_ICON: Record<AlertVariant, (p: IconProps) => React.ReactElement> = {
-  success: IconCheckCircle,
-  warning: IconAlertTriangle,
-  error: IconAlertTriangle,
-  info: IconInbox
+const ORDER_STATE_TONE: Record<string, "ok" | "warn" | "bad" | "plain"> = {
+  completed: "ok",
+  matched: "ok",
+  ok: "ok",
+  corrected: "ok",
+  needs_check: "warn",
+  mismatch: "warn",
+  unavailable: "warn",
+  not_checked: "plain",
+  unknown: "plain",
+  cancelled: "plain",
+  refunded: "bad"
 };
 
-export function Alert(props: { variant: AlertVariant; title?: string; message: string; onDismiss?: () => void }) {
-  const Icon = ALERT_ICON[props.variant];
+const ORDER_STATE_LABEL: Record<string, string> = {
+  completed: "Completed",
+  cancelled: "Cancelled",
+  refunded: "Refunded",
+  unknown: "Unknown",
+  needs_check: "Needs check",
+  corrected: "Corrected",
+  ok: "OK",
+  matched: "Matched",
+  mismatch: "Mismatch",
+  unavailable: "Not verified",
+  not_checked: "Not checked"
+};
+
+/** Status tag with the app-wide status → tone mapping baked in. */
+export function StateTag(props: { state: string; label?: string }) {
   return (
-    <div className={`alert alert--${props.variant}`} role={props.variant === "error" ? "alert" : "status"}>
-      <span className="alert-icon"><Icon size={17} /></span>
-      <span className="alert-body">
-        {props.title && <div className="alert-title">{props.title}</div>}
-        <div className="alert-message">{props.message}</div>
+    <Tag tone={ORDER_STATE_TONE[props.state] ?? "plain"}>
+      {props.label ?? ORDER_STATE_LABEL[props.state] ?? props.state}
+    </Tag>
+  );
+}
+
+export type NoticeTone = "ok" | "warn" | "bad" | "plain";
+
+const NOTICE_ICON: Record<NoticeTone, (p: IconProps) => React.ReactElement> = {
+  ok: IconCheckCircle,
+  warn: IconAlertTriangle,
+  bad: IconAlertTriangle,
+  plain: IconInfo
+};
+
+export function Notice(props: { tone: NoticeTone; title?: string; body: string; onDismiss?: () => void }) {
+  const Icon = NOTICE_ICON[props.tone];
+  const cls = props.tone === "plain" ? "notice" : `notice ${props.tone}`;
+  return (
+    <div className={cls} role={props.tone === "bad" ? "alert" : "status"}>
+      <Icon size={16} />
+      <span className="notice-body">
+        {props.title && <strong>{props.title}</strong>}
+        <p>{props.body}</p>
       </span>
       {props.onDismiss && (
-        <button type="button" className="icon-btn-sm" aria-label="Dismiss" onClick={props.onDismiss}>
+        <button type="button" className="notice-x" aria-label="Dismiss" onClick={props.onDismiss}>
           <IconClose size={13} />
         </button>
       )}
@@ -192,10 +238,10 @@ export function Alert(props: { variant: AlertVariant; title?: string; message: s
   );
 }
 
-export function EmptyState(props: { icon?: React.ReactNode; title: string; body: string; children?: React.ReactNode }) {
+export function Empty(props: { icon?: React.ReactNode; title: string; body: string; children?: React.ReactNode }) {
   return (
-    <div className="empty-state">
-      {props.icon && <div className="empty-icon">{props.icon}</div>}
+    <div className="empty">
+      {props.icon && <div className="empty-orb">{props.icon}</div>}
       <h3>{props.title}</h3>
       <p>{props.body}</p>
       {props.children}
@@ -203,35 +249,51 @@ export function EmptyState(props: { icon?: React.ReactNode; title: string; body:
   );
 }
 
+export function Switch(props: { checked: boolean; disabled?: boolean; onChange: (next: boolean) => void; title: string; caption?: string }) {
+  return (
+    <label className="switch-row" style={props.disabled ? { opacity: 0.5 } : undefined}>
+      <span>
+        <strong>{props.title}</strong>
+        {props.caption && <small>{props.caption}</small>}
+      </span>
+      <input
+        type="checkbox"
+        checked={props.checked}
+        disabled={props.disabled}
+        onChange={(event) => props.onChange(event.target.checked)}
+      />
+      <span className={props.checked ? "switch on" : "switch"} aria-hidden="true"><i /></span>
+    </label>
+  );
+}
+
 export type TabKey = "import" | "home" | "batches" | "export";
 
-export function TabBar(props: { active: TabKey; attentionCount?: number; onSelect: (tab: TabKey) => void }) {
+export function Dock(props: { active: TabKey; attentionCount?: number; onSelect: (tab: TabKey) => void }) {
   const items: Array<{ key: TabKey; label: string; icon: (p: IconProps) => React.ReactElement }> = [
     { key: "import", label: "Import", icon: IconCamera },
-    { key: "home", label: "Dash", icon: IconChart },
+    { key: "home", label: "Dashboard", icon: IconChart },
     { key: "batches", label: "History", icon: IconHistory },
     { key: "export", label: "Export", icon: IconExport }
   ];
   return (
-    <div className="tab-bar-dock">
-      <nav className="tab-bar">
-        {items.map((item) => (
-          <button
-            key={item.key}
-            className={item.key === props.active ? "tab-item active" : "tab-item"}
-            onClick={() => props.onSelect(item.key)}
-          >
-            <item.icon size={20} />
-            <span>{item.label}</span>
-            {item.key === "home" && !!props.attentionCount && <span className="tab-badge">{props.attentionCount}</span>}
-          </button>
-        ))}
-      </nav>
-    </div>
+    <nav className="dock">
+      {items.map((item) => (
+        <button
+          key={item.key}
+          className={item.key === props.active ? "dock-item on" : "dock-item"}
+          onClick={() => props.onSelect(item.key)}
+        >
+          <span className="dock-icon"><item.icon size={18} /></span>
+          <span>{item.label}</span>
+          {item.key === "home" && !!props.attentionCount && <span className="dock-badge">{props.attentionCount}</span>}
+        </button>
+      ))}
+    </nav>
   );
 }
 
-export function BottomSheet(props: {
+export function Sheet(props: {
   title: string;
   subtitle?: string;
   onClose: () => void;
@@ -239,24 +301,75 @@ export function BottomSheet(props: {
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="sheet-overlay">
+    <div className="sheet-layer">
       <button className="sheet-scrim" onClick={props.onClose} aria-label="Close" />
-      <div className="sheet-dock">
-        <section className="sheet-card">
-          <div className="sheet-handle" />
-          <div className="sheet-head">
-            <div>
-              <h2>{props.title}</h2>
-              {props.subtitle && <p>{props.subtitle}</p>}
-            </div>
-            <button className="icon-btn" onClick={props.onClose} aria-label="Close">
-              <IconClose size={18} />
-            </button>
+      <section className="sheet">
+        <div className="sheet-grip" />
+        <div className="sheet-top">
+          <div>
+            <h2>{props.title}</h2>
+            {props.subtitle && <p>{props.subtitle}</p>}
           </div>
-          <div className="sheet-body">{props.children}</div>
-          {props.footer && <div className="sheet-footer">{props.footer}</div>}
-        </section>
-      </div>
+          <button className="sheet-x" onClick={props.onClose} aria-label="Close">
+            <IconClose size={16} />
+          </button>
+        </div>
+        <div className="sheet-body">{props.children}</div>
+        {props.footer && <div className="sheet-foot">{props.footer}</div>}
+      </section>
     </div>
   );
 }
+
+/* ============ Toast ============ */
+
+type ToastContextValue = { show: (message: string) => void };
+
+const ToastContext = createContext<ToastContextValue>({ show: () => undefined });
+
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [message, setMessage] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const show = useCallback((next: string) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setMessage(next);
+    timerRef.current = setTimeout(() => setMessage(null), 2200);
+  }, []);
+
+  return (
+    <ToastContext.Provider value={{ show }}>
+      {children}
+      {message && <div className="toast" role="status">{message}</div>}
+    </ToastContext.Provider>
+  );
+}
+
+export function useToast() {
+  return useContext(ToastContext);
+}
+
+/* Transitional exports keep the workflow components decoupled from visual
+   naming. New work should use Button/Notice/Empty/Sheet directly. */
+export const PrimaryButton = (props: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  block?: boolean;
+  variant?: "primary" | "ghost" | "danger";
+}) => {
+  const { block, variant = "primary", className, ...rest } = props;
+  const tone = variant === "primary" ? "ink" : variant === "danger" ? "bad" : "line";
+  return <Button tone={tone} wide={block} className={className} {...rest} />;
+};
+
+export const Alert = (props: {
+  variant: "success" | "warning" | "error" | "info";
+  title?: string;
+  message: string;
+  onDismiss?: () => void;
+}) => {
+  const tone = props.variant === "success" ? "ok" : props.variant === "warning" ? "warn" : props.variant === "error" ? "bad" : "plain";
+  return <Notice tone={tone} title={props.title} body={props.message} onDismiss={props.onDismiss} />;
+};
+
+export const EmptyState = Empty;
+export const BottomSheet = Sheet;
+export const Badge = (props: { status: string; label?: string }) => <StateTag state={props.status} label={props.label} />;

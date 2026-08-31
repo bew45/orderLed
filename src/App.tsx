@@ -7,7 +7,7 @@ import { ExportScreen } from "./screens/ExportScreen";
 import { UploadFlow } from "./screens/UploadFlow";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { CreateBatchSheet } from "./components/CreateBatchSheet";
-import { Alert, IconGear, TabBar, type TabKey } from "./components/ui";
+import { Dock, IconGear, Notice, ToastProvider, type TabKey } from "./components/ui";
 
 function Shell() {
   const { allOrders, error, clearError, loading } = useAppData();
@@ -18,54 +18,62 @@ function Shell() {
 
   if (loading) {
     return (
-      <div className="app-shell">
-        <div className="screen">
-          <p className="screen-subtitle">Loading OrderLedger…</p>
+      <div className="shell">
+        <div className="shell-topbar">
+          <span className="wordmark"><i />OrderLedger</span>
+        </div>
+        <div className="shell-scroll">
+          <div className="screen">
+            <div className="screen-head">
+              <p>Loading your ledger…</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
+  // Bug B10: the tab badge counts only blocked rows (money-affecting, need a human),
+  // not every "review" row — those still show in totals and just carry a chip.
+  const needsCheckCount = allOrders.filter((order) => order.review_tier === "blocked").length;
+
   return (
-    <div className={tab === "home" ? "app-shell app-shell-dashboard" : "app-shell"}>
-      {tab !== "home" && (
-        <header className="app-header">
-          <div>
-            <p className="eyebrow">OrderLedger</p>
-            <h1>Food order ledger</h1>
+    <div className="shell">
+      <div className="shell-topbar">
+        <span className="wordmark"><i />OrderLedger</span>
+        <button className="icon-orb" onClick={() => setSettingsOpen(true)} aria-label="Settings">
+          <IconGear size={17} />
+        </button>
+      </div>
+
+      <div className="shell-scroll">
+        {error && (
+          <div style={{ padding: "0.25rem var(--pad-x) 0" }}>
+            <Notice tone="bad" title="Something went wrong" body={error} onDismiss={clearError} />
           </div>
-          <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Settings">
-            <IconGear size={19} />
-          </button>
-        </header>
-      )}
+        )}
 
-      {error && (
-        <div className="inline-banner-slot">
-          <Alert variant="error" title="Something went wrong" message={error} onDismiss={clearError} />
-        </div>
-      )}
+        {tab === "import" && (
+          <ImportScreen
+            onUpload={() => setUploadOpen(true)}
+            onCreateBatch={() => setCreateBatchOpen(true)}
+            onOpenDashboard={() => setTab("home")}
+          />
+        )}
+        {tab === "home" && (
+          <HomeScreen
+            onCreateBatch={() => setCreateBatchOpen(true)}
+            onOpenImport={() => setTab("import")}
+            onOpenExport={() => setTab("export")}
+          />
+        )}
+        {tab === "batches" && (
+          <BatchesScreen onCreateBatch={() => setCreateBatchOpen(true)} onSelected={() => setTab("import")} />
+        )}
+        {tab === "export" && <ExportScreen />}
+      </div>
 
-      {tab === "import" && (
-        <ImportScreen
-          onUpload={() => setUploadOpen(true)}
-          onCreateBatch={() => setCreateBatchOpen(true)}
-          onOpenDashboard={() => setTab("home")}
-        />
-      )}
-      {tab === "home" && (
-        <HomeScreen
-          onCreateBatch={() => setCreateBatchOpen(true)}
-          onOpenImport={() => setTab("import")}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
-      )}
-      {tab === "batches" && (
-        <BatchesScreen onCreateBatch={() => setCreateBatchOpen(true)} onSelected={() => setTab("import")} />
-      )}
-      {tab === "export" && <ExportScreen />}
-
-      <TabBar active={tab} attentionCount={allOrders.filter((order) => order.review_state === "needs_check").length} onSelect={setTab} />
+      <Dock active={tab} attentionCount={needsCheckCount} onSelect={setTab} />
 
       {uploadOpen && (
         <UploadFlow
@@ -84,7 +92,9 @@ function Shell() {
 export function App() {
   return (
     <AppDataProvider>
-      <Shell />
+      <ToastProvider>
+        <Shell />
+      </ToastProvider>
     </AppDataProvider>
   );
 }

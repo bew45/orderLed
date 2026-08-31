@@ -1,4 +1,4 @@
-import type { Batch, BatchSummary, OrderRow, SourceApp } from "./types";
+import type { Batch, BatchSummary, OrderRow, PdfStyle, SourceApp } from "./types";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -61,13 +61,16 @@ export function renderBatchInvoiceHtml(input: {
   orders: OrderRow[];
   summary: Pick<BatchSummary, "netSpend" | "ordersTotal" | "ordersNeedingReview">;
   month?: string;
+  style: PdfStyle;
   promptPayQr?: {
     qrDataUrl: string;
     id: string;
     recipientName?: string;
   };
 }) {
-  const { batch, orders, summary, month, promptPayQr } = input;
+  const { batch, orders, summary, month, promptPayQr, style } = input;
+  const isMinimal = style === "minimal";
+  const isAudit = style === "audit";
 
   const appCounts = new Map<SourceApp, number>();
   for (const order of orders) {
@@ -111,8 +114,9 @@ export function renderBatchInvoiceHtml(input: {
         <td class="nowrap">${fmtDateTime(order.ordered_at)}</td>
         <td><span class="app-glyph sm" style="background:${meta.color}">${escapeHtml(meta.glyph)}</span></td>
         <td>${escapeHtml(order.restaurant_name || "Unknown restaurant")}</td>
-        <td class="items">${escapeHtml(order.items_text || "-")}</td>
+        ${isMinimal ? "" : `<td class="items">${escapeHtml(order.items_text || "-")}</td>`}
         <td class="nowrap" style="color:${status.color}">${escapeHtml(status.label)}</td>
+        ${isAudit ? `<td class="nowrap">${escapeHtml(order.review_state === "needs_check" ? "Needs check" : order.review_state === "corrected" ? "Corrected" : "Matched")}</td>` : ""}
         <td class="num money">${money(order.net_amount)}</td>
       </tr>`;
   }).join("\n");
@@ -125,6 +129,7 @@ export function renderBatchInvoiceHtml(input: {
       <td class="num money">${money(row.total)}</td>
     </tr>`).join("\n");
 
+  const styleName = style === "minimal" ? "Minimal statement" : style === "audit" ? "Audit statement" : "Midnight statement";
   return `<!doctype html>
 <html>
 <head>
@@ -138,6 +143,18 @@ export function renderBatchInvoiceHtml(input: {
     font-size: 11px;
     margin: 0;
   }
+  body.style-minimal .header { border-bottom-width: 1px; }
+  body.style-minimal .brand-mark, body.style-minimal .amount-due { background: #263544; }
+  body.style-minimal .brand-name { color: #263544; }
+  body.style-minimal .stat-card, body.style-minimal .info-grid { border-color: #D9DEE3; background: #fff; }
+  body.style-minimal .bottom-grid { display: none; }
+  body.style-midnight .header { border-bottom-color: #152A45; }
+  body.style-midnight .brand-mark, body.style-midnight .amount-due { background: #152A45; }
+  body.style-midnight .brand-name { color: #152A45; }
+  body.style-midnight .order-table th { background: #EAF0F7; color: #314B67; }
+  body.style-audit .header { border-bottom-color: #314E70; }
+  body.style-audit .brand-mark, body.style-audit .amount-due { background: #314E70; }
+  body.style-audit .order-table th { background: #EAF0F6; }
   .sheet { padding: 4px; }
   .header {
     display: flex;
@@ -203,7 +220,7 @@ export function renderBatchInvoiceHtml(input: {
   .order-table .items { color: #45514A; }
   .order-section { margin-bottom: 16px; }
 
-  .bottom-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 14px; align-items: start; }
+  .bottom-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 14px; align-items: start; break-inside: avoid; page-break-inside: avoid; }
   .mini-table th, .mini-table td { border-bottom: 1px solid #EAEEEA; padding: 5px 7px; font-size: 10.5px; text-align: left; }
   .mini-table th { color: #6B776E; font-size: 9px; text-transform: uppercase; font-weight: 700; }
   .mini-table .num { text-align: right; }
@@ -218,9 +235,45 @@ export function renderBatchInvoiceHtml(input: {
   .amount-due-note { font-size: 9.5px; margin-top: 6px; opacity: 0.9; }
 
   .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #E1E7E2; display: flex; justify-content: space-between; font-size: 9px; color: #8A9089; }
+  .audit-banner { display: none; }
+
+  /* Style overrides sit last so every PDF option has a deliberately distinct layout. */
+  body.style-midnight .sheet { padding: 0; }
+  body.style-midnight .header { margin: 0 0 14px; padding: 19px 20px; border: 0; background: #101E32; color: #FFFFFF; }
+  body.style-midnight .brand-name, body.style-midnight .doc-title p { color: #BFD5F0; }
+  body.style-midnight .brand-sub { color: #7F9DC2; }
+  body.style-midnight .brand-mark { background: #3E78B4; border-radius: 50%; }
+  body.style-midnight .amount-due { background: #101E32; }
+  body.style-midnight .stat-card:first-child { background: #E8F0FA; border-color: #B6CBE3; }
+  body.style-midnight .stat-card:first-child .stat-value { color: #183B61; }
+  body.style-midnight .order-table th { background: #DCE8F5; color: #1D426A; }
+  /* Midnight intentionally starts the closeout together. Without this, Chromium
+     can split the QR from the totals and leave it alone on an almost empty page. */
+  body.style-midnight .bottom-grid { break-before: page; page-break-before: always; }
+
+  body.style-minimal .brand { display: none; }
+  body.style-minimal .header { display: block; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #AEB8C2; }
+  body.style-minimal .doc-title { text-align: left; }
+  body.style-minimal .doc-title h1 { font-size: 20px; font-weight: 600; color: #222B35; }
+  body.style-minimal .doc-title p { color: #6D7781; }
+  body.style-minimal .info-grid { grid-template-columns: 1fr; padding: 10px 12px; border-radius: 4px; background: #FFFFFF; }
+  body.style-minimal .info-side { display: none; }
+  body.style-minimal .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 12px; }
+  body.style-minimal .stat-card { padding: 7px 9px; border-radius: 4px; box-shadow: none; }
+  body.style-minimal .stat-value { font-size: 13px; }
+  body.style-minimal .order-table th { background: #F2F4F6; color: #56616D; }
+  body.style-minimal .order-table th, body.style-minimal .order-table td { padding: 5px 6px; }
+
+  body.style-audit .header { margin: 0 0 12px; padding: 16px 18px; border: 1px solid #9CB9D7; border-radius: 10px; background: #EAF3FD; }
+  body.style-audit .brand-mark { background: #24598C; }
+  body.style-audit .brand-name { color: #24598C; }
+  body.style-audit .amount-due { background: #24598C; }
+  body.style-audit .order-table th { background: #D9EAF9; color: #24598C; }
+  body.style-audit .audit-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 12px; margin: 0 0 12px; border: 1px solid ${needsReview ? "#E6C06C" : "#96CDB4"}; border-radius: 8px; background: ${needsReview ? "#FFF7DE" : "#ECF8F1"}; color: ${needsReview ? "#805B08" : "#1E7048"}; font-size: 10px; }
+  body.style-audit .audit-banner strong { font-size: 11px; }
 </style>
 </head>
-<body>
+<body class="style-${style}">
   <div class="sheet">
     <div class="header">
       <div class="brand">
@@ -231,8 +284,8 @@ export function renderBatchInvoiceHtml(input: {
         </div>
       </div>
       <div class="doc-title">
-        <h1>Batch Invoice</h1>
-        <p>Food order ledger summary</p>
+        <h1>Spending Statement</h1>
+        <p>${styleName} · Food order ledger</p>
       </div>
     </div>
 
@@ -257,6 +310,8 @@ export function renderBatchInvoiceHtml(input: {
       </div>
     </div>
 
+    ${isAudit ? `<div class="audit-banner"><strong>${needsReview ? `${summary.ordersNeedingReview} orders need checking` : "All extracted orders are checked"}</strong><span>${needsReview ? "Use the screenshot evidence before treating totals as final." : "No outstanding verification warning."}</span></div>` : ""}
+
     <div class="stat-grid">
       <div class="stat-card"><span class="stat-label">Total Spent</span><span class="stat-value">THB ${money(netTotal)}</span></div>
       <div class="stat-card"><span class="stat-label">Total Orders</span><span class="stat-value">${summary.ordersTotal}</span></div>
@@ -273,13 +328,14 @@ export function renderBatchInvoiceHtml(input: {
             <th>Date / Time</th>
             <th>App</th>
             <th>Restaurant</th>
-            <th>Items / Note</th>
+            ${isMinimal ? "" : "<th>Items / Note</th>"}
             <th>Status</th>
+            ${isAudit ? "<th>Check</th>" : ""}
             <th class="num">Amount (THB)</th>
           </tr>
         </thead>
         <tbody>
-          ${orderRowsHtml || `<tr><td colspan="7" style="text-align:center;color:#8A9089;padding:14px;">No orders in this batch</td></tr>`}
+          ${orderRowsHtml || `<tr><td colspan="${isMinimal ? 6 : isAudit ? 8 : 7}" style="text-align:center;color:#8A9089;padding:14px;">No orders in this batch</td></tr>`}
         </tbody>
       </table>
     </div>
